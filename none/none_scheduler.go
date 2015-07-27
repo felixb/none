@@ -33,6 +33,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
+	archivex "github.com/jhoonb/archivex"
 	"github.com/mesos/mesos-go/auth"
 	"github.com/mesos/mesos-go/auth/sasl"
 	"github.com/mesos/mesos-go/auth/sasl/mech"
@@ -45,20 +46,22 @@ import (
 const (
 	DEFAULT_CPUS_PER_TASK = 1
 	DEFAULT_MEM_PER_TASK  = 128
-	DEFAULT_ARTIFACT_PORT = 12345
+	DEFAULT_ARTIFACT_PORT = 10080
 	EXECUTOR_FILENAME     = "none-executor"
+	WORKDIR_ARCHIVE       = "workdir.tar.gz"
 )
 
 var (
 	address      = flag.String("address", "127.0.0.1", "Binding address for artifact server")
 	artifactPort = flag.Int("artifactPort", DEFAULT_ARTIFACT_PORT, "Binding port for artifact server")
-	authProvider = flag.String("mesos_authentication_provider", sasl.ProviderName,
+	master       = flag.String("master", "127.0.0.1:5050", "Master address <ip:port>")
+	authProvider = flag.String("mesos-authentication-provider", sasl.ProviderName,
 		fmt.Sprintf("Authentication provider to use, default is SASL that supports mechanisms: %+v", mech.ListSupported()))
-	master              = flag.String("master", "127.0.0.1:5050", "Master address <ip:port>")
-	mesosAuthPrincipal  = flag.String("mesos_authentication_principal", "", "Mesos authentication principal.")
-	mesosAuthSecretFile = flag.String("mesos_authentication_secret_file", "", "Mesos authentication secret file.")
+	mesosAuthPrincipal  = flag.String("mesos-authentication-principal", "", "Mesos authentication principal.")
+	mesosAuthSecretFile = flag.String("mesos-authentication-secret-file", "", "Mesos authentication secret file.")
 	user                = flag.String("user", "", "Run task as specified user. Defaults to current user.")
 	framworkName        = flag.String("framework-name", "NONE", "Framework name")
+	sendWorkdir         = flag.Bool("send-workdir", true, "Send current working dir to executor.")
 	cpuPerTask          = flag.Float64("cpuPerTask", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
 	memPerTask          = flag.Float64("memPerTask", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
 	command             = flag.String("command", "", "Command to run on the cluster")
@@ -203,34 +206,41 @@ func init() {
 }
 
 // returns (downloadURI, basename(path))
-func serveExecutorArtifact(path string) (*string, string) {
+func serveArtifact(path, base string) (*string, string) {
 	serveFile := func(pattern string, filename string) {
 		http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			http.ServeFile(w, r, filename)
 		})
 	}
 
-	// Create base path (http://foobar:5000/<base>)
-	pathSplit := strings.Split(path, "/")
-	var base string
-	if len(pathSplit) > 0 {
-		base = pathSplit[len(pathSplit)-1]
-	} else {
-		base = path
-	}
 	serveFile("/"+base, path)
 
 	hostURI := fmt.Sprintf("http://%s:%d/%s", *address, *artifactPort, base)
-	log.V(2).Infof("Hosting artifact '%s' at '%s'", path, hostURI)
+	log.Infof("Hosting artifact '%s' at '%s'", path, hostURI)
 
 	return &hostURI, base
 }
 
-func prepareExecutorInfo() *mesos.ExecutorInfo {
+func tarWorkdir() (*string, error) {
+	path := fmt.Sprintf("%s/none-workdir-%d.tar.gz", os.TempDir(), os.Getpid())
+	tar := new(archivex.TarFile)
+	tar.Create(path)
+	tar.AddAll(".", true)
+	tar.Close()
+
+	return &path, nil
+}
+
+func prepareExecutorInfo(workdirPath *string) *mesos.ExecutorInfo {
 	executorPath := filepath.Join(filepath.Dir(os.Args[0]), EXECUTOR_FILENAME)
 	executorUris := []*mesos.CommandInfo_URI{}
-	uri, executorCmd := serveExecutorArtifact(executorPath)
+	uri, executorCmd := serveArtifact(executorPath, filepath.Base(executorPath))
 	executorUris = append(executorUris, &mesos.CommandInfo_URI{Value: uri, Executable: proto.Bool(true)})
+
+	if workdirPath != nil {
+		uri, _ := serveArtifact(*workdirPath, WORKDIR_ARCHIVE)
+		executorUris = append(executorUris, &mesos.CommandInfo_URI{Value: uri, Executable: proto.Bool(false)})
+	}
 
 	executorCommand := fmt.Sprintf("./%s", executorCmd)
 
@@ -269,8 +279,19 @@ func parseIP(address string) net.IP {
 
 func main() {
 
+	// tar workdir and make sure it gets deleted
+	var workdirPath *string
+	var err error
+	if *sendWorkdir {
+		workdirPath, err = tarWorkdir()
+		if err != nil {
+			log.Errorln("error creating workdir tar:", err)
+		}
+		defer os.Remove(*workdirPath)
+	}
+
 	// build command executor
-	exec := prepareExecutorInfo()
+	exec := prepareExecutorInfo(workdirPath)
 
 	// the framework
 	fwinfo := &mesos.FrameworkInfo{
@@ -278,6 +299,7 @@ func main() {
 		Name: proto.String("NONE"),
 	}
 
+	// credentials
 	cred := (*mesos.Credential)(nil)
 	if *mesosAuthPrincipal != "" {
 		fwinfo.Principal = proto.String(*mesosAuthPrincipal)

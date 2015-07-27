@@ -52,6 +52,8 @@ func (executor *noneExecutor) Disconnected(executor.ExecutorDriver) {
 }
 
 func (executor *noneExecutor) runCommand(driver executor.ExecutorDriver, command string) error {
+	fmt.Printf("running command: %s", command)
+
 	cmd := exec.Command("sh", "-c", command)
 	var stdOut bytes.Buffer
 	var stdErr bytes.Buffer
@@ -60,12 +62,17 @@ func (executor *noneExecutor) runCommand(driver executor.ExecutorDriver, command
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("error starting command: %q", err)
 		return err
+	} else {
+		fmt.Printf("command execution finished: %b", cmd.ProcessState.Success())
 	}
+
+	// write stdout + stderr to sandbox
+	os.Stdout.Write(stdOut.Bytes())
+	os.Stderr.Write(stdErr.Bytes())
+
 	// send stdout + stderr to framework
 	driver.SendFrameworkMessage(fmt.Sprintf("stdout:%s", stdOut.String()))
 	driver.SendFrameworkMessage(fmt.Sprintf("stderr:%s", stdErr.String()))
-	os.Stdout.Write(stdOut.Bytes())
-	os.Stderr.Write(stdErr.Bytes())
 	return nil
 }
 
