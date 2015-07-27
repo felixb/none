@@ -47,12 +47,15 @@ const (
 	DEFAULT_CPUS_PER_TASK = 1
 	DEFAULT_MEM_PER_TASK  = 128
 	DEFAULT_ARTIFACT_PORT = 10080
+	DEFAULT_DRIVER_PORT   = 10050
 	EXECUTOR_FILENAME     = "none-executor"
 	WORKDIR_ARCHIVE       = "workdir.tar.gz"
 )
 
 var (
-	address      = flag.String("address", "127.0.0.1", "Binding address for artifact server")
+	hostname     = flag.String("hostname", "", "Overwrite hostname")
+	ip           = flag.String("ip", "127.0.0.1", "Binding address for framework and artifact server")
+	port         = flag.Uint("port", DEFAULT_DRIVER_PORT, "Binding port for framework")
 	artifactPort = flag.Int("artifactPort", DEFAULT_ARTIFACT_PORT, "Binding port for artifact server")
 	master       = flag.String("master", "127.0.0.1:5050", "Master address <ip:port>")
 	authProvider = flag.String("mesos-authentication-provider", sasl.ProviderName,
@@ -215,7 +218,7 @@ func serveArtifact(path, base string) (*string, string) {
 
 	serveFile("/"+base, path)
 
-	hostURI := fmt.Sprintf("http://%s:%d/%s", *address, *artifactPort, base)
+	hostURI := fmt.Sprintf("http://%s:%d/%s", *ip, *artifactPort, base)
 	log.Infof("Hosting artifact '%s' at '%s'", path, hostURI)
 
 	return &hostURI, base
@@ -227,7 +230,6 @@ func tarWorkdir() (*string, error) {
 	tar.Create(path)
 	tar.AddAll(".", true)
 	tar.Close()
-
 	return &path, nil
 }
 
@@ -244,8 +246,8 @@ func prepareExecutorInfo(workdirPath *string) *mesos.ExecutorInfo {
 
 	executorCommand := fmt.Sprintf("./%s", executorCmd)
 
-	go http.ListenAndServe(fmt.Sprintf("%s:%d", *address, *artifactPort), nil)
-	log.V(2).Info("Serving executor artifacts...")
+	go http.ListenAndServe(fmt.Sprintf("%s:%d", *ip, *artifactPort), nil)
+	log.Infoln("Serving executor artifacts...")
 
 	shell := false
 	args := []string{*command}
@@ -312,14 +314,16 @@ func main() {
 			Secret:    secret,
 		}
 	}
-	bindingAddress := parseIP(*address)
+	bindingAddress := parseIP(*ip)
 	scheduler := newNoneScheduler(exec, *cpuPerTask, *memPerTask)
 	config := sched.DriverConfig{
-		Scheduler:      scheduler,
-		Framework:      fwinfo,
-		Master:         *master,
-		Credential:     cred,
-		BindingAddress: bindingAddress,
+		Scheduler:        scheduler,
+		Framework:        fwinfo,
+		Master:           *master,
+		Credential:       cred,
+		HostnameOverride: *hostname,
+		BindingAddress:   bindingAddress,
+		BindingPort:      uint16(*port),
 		WithAuthContext: func(ctx context.Context) context.Context {
 			ctx = auth.WithLoginProvider(ctx, *authProvider)
 			ctx = sasl.WithBindingAddress(ctx, bindingAddress)
