@@ -19,6 +19,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -31,22 +32,28 @@ import (
 )
 
 type NoneScheduler struct {
+	Commands      chan *Command
+	nextCommand   *Command
 	executor      *mesos.ExecutorInfo
 	cpuPerTask    float64
 	memPerTask    float64
 	tasksLaunched int
 	tasksFinished int
 	totalTasks    int
+	running       bool
 }
 
 func NewNoneScheduler(exec *mesos.ExecutorInfo, cpus, mem float64) *NoneScheduler {
 	return &NoneScheduler{
+		Commands:      make(chan *Command, 10),
+		nextCommand:   nil,
 		executor:      exec,
 		cpuPerTask:    cpus,
 		memPerTask:    mem,
 		tasksLaunched: 0,
 		tasksFinished: 0,
-		totalTasks:    1,
+		totalTasks:    0,
+		running:       true,
 	}
 }
 
@@ -62,8 +69,23 @@ func (sched *NoneScheduler) Disconnected(sched.SchedulerDriver) {
 	log.Infoln("Framework Disconnected")
 }
 
-func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
+func (sched *NoneScheduler) fetchNextCommand() {
+	select {
+	case sched.nextCommand = <-sched.Commands:
+		if sched.nextCommand != nil {
+			sched.totalTasks++
+			log.Infoln("Schedule next command from queue:", strings.TrimSpace(sched.nextCommand.Cmd))
+		} else {
+			// channel was closed, stop listening for new commands
+			sched.running = false
+		}
+	default:
+		sched.nextCommand = nil
+	}
+}
 
+// process incoming offers and try to schedule new tasks as they come in on the channel
+func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
 	for _, offer := range offers {
 		cpuResources := util.FilterResources(offer.Resources, func(res *mesos.Resource) bool {
 			return res.GetName() == "cpus"
@@ -86,15 +108,22 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 		remainingCpus := cpus
 		remainingMems := mems
 
+		if sched.nextCommand == nil {
+			sched.fetchNextCommand()
+		}
+
+		// try to schedule as may tasks as possible for this single offer
 		var tasks []*mesos.TaskInfo
-		for sched.tasksLaunched < sched.totalTasks &&
+		for sched.nextCommand != nil &&
 			sched.cpuPerTask <= remainingCpus &&
 			sched.memPerTask <= remainingMems {
 
 			sched.tasksLaunched++
 
+			tId := strconv.Itoa(sched.tasksLaunched)
+			sched.nextCommand.Id = tId
 			taskId := &mesos.TaskID{
-				Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
+				Value: proto.String(tId),
 			}
 
 			task := &mesos.TaskInfo{
@@ -106,32 +135,35 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 					util.NewScalarResource("cpus", sched.cpuPerTask),
 					util.NewScalarResource("mem", sched.memPerTask),
 				},
+				Data: []byte(sched.nextCommand.Cmd),
 			}
 			log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
 
 			tasks = append(tasks, task)
 			remainingCpus -= sched.cpuPerTask
 			remainingMems -= sched.memPerTask
+			sched.fetchNextCommand()
 		}
-		log.Infoln("Launching ", len(tasks), "tasks for offer", offer.Id.GetValue())
+		log.Infoln("Launching", len(tasks), "tasks for offer", offer.Id.GetValue())
 		driver.LaunchTasks([]*mesos.OfferID{offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	}
 }
 
 func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
 	log.Infoln("Status update: task", status.TaskId.GetValue(), "is in state", status.State.Enum().String())
-	if status.GetState() == mesos.TaskState_TASK_FINISHED {
+	if status.GetState() == mesos.TaskState_TASK_FINISHED ||
+		status.GetState() == mesos.TaskState_TASK_FAILED {
 		sched.tasksFinished++
 	}
 
-	if sched.tasksFinished >= sched.totalTasks {
+	// stop if Commands channel was closed and all tasks have finished
+	if !sched.running && sched.tasksFinished >= sched.totalTasks {
 		log.Infoln("Total tasks completed, stopping framework.")
 		driver.Stop(false)
 	}
 
 	if status.GetState() == mesos.TaskState_TASK_LOST ||
-		status.GetState() == mesos.TaskState_TASK_KILLED ||
-		status.GetState() == mesos.TaskState_TASK_FAILED {
+		status.GetState() == mesos.TaskState_TASK_KILLED {
 		log.Infoln(
 			"Aborting because task", status.TaskId.GetValue(),
 			"is in unexpected state", status.State.String(),
@@ -145,12 +177,16 @@ func (sched *NoneScheduler) OfferRescinded(driver sched.SchedulerDriver, offer *
 	log.Infoln("Rescined offer", *offer)
 }
 
+func (sched *NoneScheduler) printMessage(w io.Writer, taskId, message string) {
+	io.WriteString(w, message)
+}
+
 func (sched *NoneScheduler) FrameworkMessage(driver sched.SchedulerDriver, exec *mesos.ExecutorID, slave *mesos.SlaveID, message string) {
-	parts := strings.SplitN(message, ":", 2)
-	if parts[0] == "stdout" {
-		os.Stdout.WriteString(parts[1])
-	} else if parts[0] == "stderr" {
-		os.Stderr.WriteString(parts[1])
+	parts := strings.SplitN(message, ":", 3)
+	if parts[1] == "stdout" {
+		sched.printMessage(os.Stdout, parts[0], parts[2])
+	} else if parts[1] == "stderr" {
+		sched.printMessage(os.Stderr, parts[0], parts[2])
 	} else {
 		log.Warningln("Dropping invalid message")
 	}

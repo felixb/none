@@ -19,9 +19,10 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
@@ -49,70 +50,10 @@ func (executor *noneExecutor) Disconnected(executor.ExecutorDriver) {
 	fmt.Println("Executor disconnected.")
 }
 
-func (executor *noneExecutor) runCommand(driver executor.ExecutorDriver, command string) error {
-	fmt.Printf("running command: %s", command)
-
-	cmd := exec.Command("sh", "-c", command)
-	var stdOut bytes.Buffer
-	var stdErr bytes.Buffer
-	cmd.Stdout = &stdOut
-	cmd.Stderr = &stdErr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("error starting command: %q", err)
-		return err
-	} else {
-		fmt.Printf("command execution finished: %b", cmd.ProcessState.Success())
-	}
-
-	// write stdout + stderr to sandbox
-	os.Stdout.Write(stdOut.Bytes())
-	os.Stderr.Write(stdErr.Bytes())
-
-	// send stdout + stderr to framework
-	driver.SendFrameworkMessage(fmt.Sprintf("stdout:%s", stdOut.String()))
-	driver.SendFrameworkMessage(fmt.Sprintf("stderr:%s", stdErr.String()))
-	return nil
-}
-
 func (executor *noneExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo) {
-	command := taskInfo.Executor.Command.GetArguments()[0]
+	command := string(taskInfo.Data)
 	fmt.Println("Launching task", taskInfo.GetName(), "with command:", command)
-	runStatus := &mesos.TaskStatus{
-		TaskId: taskInfo.GetTaskId(),
-		State:  mesos.TaskState_TASK_RUNNING.Enum(),
-	}
-	_, err := driver.SendStatusUpdate(runStatus)
-	if err != nil {
-		fmt.Println("Got error", err)
-	}
-
-	executor.tasksLaunched++
-	fmt.Println("Total tasks launched ", executor.tasksLaunched)
-
-	err = executor.runCommand(driver, command)
-	if err != nil {
-		fmt.Println("Task error", taskInfo.GetName())
-		finStatus := &mesos.TaskStatus{
-			TaskId: taskInfo.GetTaskId(),
-			State:  mesos.TaskState_TASK_ERROR.Enum(),
-		}
-		_, err = driver.SendStatusUpdate(finStatus)
-		if err != nil {
-			fmt.Println("Got error", err)
-		}
-	} else {
-		// finish task
-		fmt.Println("Finishing task", taskInfo.GetName())
-		finStatus := &mesos.TaskStatus{
-			TaskId: taskInfo.GetTaskId(),
-			State:  mesos.TaskState_TASK_FINISHED.Enum(),
-		}
-		_, err = driver.SendStatusUpdate(finStatus)
-		if err != nil {
-			fmt.Println("Got error", err)
-		}
-		fmt.Println("Task finished", taskInfo.GetName())
-	}
+	go executor.launchTask(driver, taskInfo, command)
 }
 
 func (executor *noneExecutor) KillTask(executor.ExecutorDriver, *mesos.TaskID) {
@@ -127,6 +68,81 @@ func (executor *noneExecutor) Shutdown(executor.ExecutorDriver) {
 
 func (executor *noneExecutor) Error(driver executor.ExecutorDriver, err string) {
 	fmt.Println("Got error message:", err)
+}
+
+// -------------------------- private ----------------- //
+
+func (executor *noneExecutor) sendStatus(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo, state *mesos.TaskState) {
+	taskStatus := &mesos.TaskStatus{
+		TaskId: taskInfo.GetTaskId(),
+		State:  state,
+	}
+	_, err := driver.SendStatusUpdate(taskStatus)
+	if err != nil {
+		fmt.Println("Error sending status update", err)
+	}
+}
+
+func (executor *noneExecutor) forwardOutput(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo, kind string, w io.Writer, r io.ReadCloser) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		b := append(scanner.Bytes(), '\n')
+		w.Write(b)
+		driver.SendFrameworkMessage(fmt.Sprintf("%s:%s:%s\n", taskInfo.TaskId.GetValue(), kind, scanner.Text()))
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error reading %s: %s", kind, err)
+	}
+}
+
+// run a command
+func (executor *noneExecutor) runCommand(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo, command string) error {
+	fmt.Printf("running command: %s", command)
+
+	cmd := exec.Command("sh", "-c", command)
+
+	// connect pipes to stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Printf("error reading stdout: %q", err)
+		return err
+	}
+	go executor.forwardOutput(driver, taskInfo, "stdout", os.Stdout, stdout)
+
+	// connect pipes to stderr
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Printf("error reading stderr: %q", err)
+		return err
+	}
+	go executor.forwardOutput(driver, taskInfo, "stderr", os.Stderr, stderr)
+
+	// run the command
+	return cmd.Run()
+}
+
+func (executor *noneExecutor) launchTask(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo, command string) {
+	executor.sendStatus(driver, taskInfo, mesos.TaskState_TASK_RUNNING.Enum())
+
+	executor.tasksLaunched++
+	fmt.Println("Total tasks launched ", executor.tasksLaunched)
+
+	err := executor.runCommand(driver, taskInfo, command)
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			// the command has exited with an exit code != 0
+			fmt.Println("Failed task", taskInfo.GetName())
+			executor.sendStatus(driver, taskInfo, mesos.TaskState_TASK_FAILED.Enum())
+		} else {
+			// something bad happend
+			fmt.Println("Task error", taskInfo.GetName())
+			executor.sendStatus(driver, taskInfo, mesos.TaskState_TASK_ERROR.Enum())
+		}
+	} else {
+		// finished task
+		fmt.Println("Finished task", taskInfo.GetName())
+		executor.sendStatus(driver, taskInfo, mesos.TaskState_TASK_FINISHED.Enum())
+	}
 }
 
 // -------------------------- func inits () ----------------- //

@@ -19,6 +19,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -63,8 +64,8 @@ var (
 	framworkName        = flag.String("framework-name", "NONE", "Framework name")
 	executorPath        = flag.String("executor", filepath.Join(filepath.Dir(os.Args[0]), EXECUTOR_FILENAME), "Executor binary")
 	sendWorkdir         = flag.Bool("send-workdir", true, "Send current working dir to executor.")
-	cpuPerTask          = flag.Float64("cpuPerTask", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
-	memPerTask          = flag.Float64("memPerTask", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
+	cpuPerTask          = flag.Float64("cpu-per-task", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
+	memPerTask          = flag.Float64("mem-per-task", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
 	command             = flag.String("command", "", "Command to run on the cluster")
 )
 
@@ -137,7 +138,6 @@ func prepareFrameworkInfo() *mesos.FrameworkInfo {
 // create the executor data structure
 func prepareExecutorInfo(executorCommand string, executorUris []*mesos.CommandInfo_URI) *mesos.ExecutorInfo {
 	shell := false
-	args := []string{*command}
 
 	// Create mesos scheduler driver.
 	return &mesos.ExecutorInfo{
@@ -147,8 +147,8 @@ func prepareExecutorInfo(executorCommand string, executorUris []*mesos.CommandIn
 		Command: &mesos.CommandInfo{
 			Value:     proto.String(executorCommand),
 			Uris:      executorUris,
-			Arguments: args,
 			Shell:     &shell,
+			Arguments: []string{""},
 		},
 	}
 }
@@ -201,6 +201,22 @@ func parseIP(address string) net.IP {
 	return addr[0]
 }
 
+func startCommand(scheduler *NoneScheduler, cmd *string) {
+	scheduler.Commands <- &Command{
+		Cmd: *cmd,
+	}
+}
+
+func startcommands(scheduler *NoneScheduler) {
+	reader := bufio.NewReader(os.Stdin)
+	cmd, err := reader.ReadString('\n')
+	for err == nil {
+		startCommand(scheduler, &cmd)
+		cmd, err = reader.ReadString('\n')
+	}
+	close(scheduler.Commands)
+}
+
 // ----------------------- func main() ------------------------- //
 
 func main() {
@@ -217,6 +233,16 @@ func main() {
 	driver, err := sched.NewMesosSchedulerDriver(config)
 	if err != nil {
 		log.Errorln("Unable to create a SchedulerDriver ", err.Error())
+	}
+
+	if command != nil && *command != "" {
+		// queue single command for execution
+		startCommand(scheduler, command)
+		close(scheduler.Commands)
+	} else {
+		// queue commands from stdin for execution
+		// non-blocking
+		go startcommands(scheduler)
 	}
 
 	// run the driver and wait for it to finish
