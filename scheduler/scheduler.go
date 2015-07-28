@@ -32,7 +32,6 @@ import (
 
 type NoneScheduler struct {
 	executor      *mesos.ExecutorInfo
-	command       *mesos.CommandInfo
 	cpuPerTask    float64
 	memPerTask    float64
 	tasksLaunched int
@@ -120,7 +119,7 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 }
 
 func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
-	log.Infoln("Status update: task", status.TaskId.GetValue(), " is in state ", status.State.Enum().String())
+	log.Infoln("Status update: task", status.TaskId.GetValue(), "is in state", status.State.Enum().String())
 	if status.GetState() == mesos.TaskState_TASK_FINISHED {
 		sched.tasksFinished++
 	}

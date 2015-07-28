@@ -90,15 +90,19 @@ func serveArtifact(path, base string) *string {
 	return &hostURI
 }
 
-// tar current workdir
+// tar workdir
 // returns path to local artifact
-func tarWorkdir() (*string, error) {
+func tarWorkdir() *string {
+	if !*sendWorkdir {
+		return nil
+	}
+
 	path := fmt.Sprintf("%s/none-workdir-%d.tar.gz", os.TempDir(), os.Getpid())
 	tar := new(archivex.TarFile)
 	tar.Create(path)
 	tar.AddAll(".", true)
 	tar.Close()
-	return &path, nil
+	return &path
 }
 
 // server workdir and executor artifacts
@@ -122,7 +126,15 @@ func exportArtifacts(workdirPath *string) (string, []*mesos.CommandInfo_URI) {
 	return executorCommand, executorUris
 }
 
-// create the executor
+// create the framework data structure
+func prepareFrameworkInfo() *mesos.FrameworkInfo {
+	return &mesos.FrameworkInfo{
+		User: proto.String(*user),
+		Name: proto.String(*framworkName),
+	}
+}
+
+// create the executor data structure
 func prepareExecutorInfo(executorCommand string, executorUris []*mesos.CommandInfo_URI) *mesos.ExecutorInfo {
 	shell := false
 	args := []string{*command}
@@ -137,6 +149,42 @@ func prepareExecutorInfo(executorCommand string, executorUris []*mesos.CommandIn
 			Uris:      executorUris,
 			Arguments: args,
 			Shell:     &shell,
+		},
+	}
+}
+
+// create credentials data structure
+func prepateCredentials(fwinfo *mesos.FrameworkInfo) *mesos.Credential {
+	if *mesosAuthPrincipal != "" {
+		fwinfo.Principal = proto.String(*mesosAuthPrincipal)
+		secret, err := ioutil.ReadFile(*mesosAuthSecretFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return &mesos.Credential{
+			Principal: proto.String(*mesosAuthPrincipal),
+			Secret:    secret,
+		}
+	} else {
+		return nil
+	}
+}
+
+// create the driver data structure
+func prepareDriver(scheduler *NoneScheduler, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) sched.DriverConfig {
+	bindingAddress := parseIP(*address)
+	return sched.DriverConfig{
+		Scheduler:        scheduler,
+		Framework:        fwinfo,
+		Master:           *master,
+		Credential:       cred,
+		HostnameOverride: *hostname,
+		BindingAddress:   bindingAddress,
+		BindingPort:      uint16(*port),
+		WithAuthContext: func(ctx context.Context) context.Context {
+			ctx = auth.WithLoginProvider(ctx, *authProvider)
+			ctx = sasl.WithBindingAddress(ctx, bindingAddress)
+			return ctx
 		},
 	}
 }
@@ -156,62 +204,17 @@ func parseIP(address string) net.IP {
 // ----------------------- func main() ------------------------- //
 
 func main() {
-
-	// tar workdir and make sure it gets deleted after execution
-	var workdirPath *string
-	var err error
-	if *sendWorkdir {
-		workdirPath, err = tarWorkdir()
-		if err != nil {
-			log.Errorln("error creating workdir tar:", err)
-		}
+	workdirPath := tarWorkdir()
+	if workdirPath != nil {
 		defer os.Remove(*workdirPath)
 	}
-
-	// build command executor
 	exec := prepareExecutorInfo(exportArtifacts(workdirPath))
-
-	// the framework
-	fwinfo := &mesos.FrameworkInfo{
-		User: proto.String(*user),
-		Name: proto.String(*framworkName),
-	}
-
-	// credentials
-	cred := (*mesos.Credential)(nil)
-	if *mesosAuthPrincipal != "" {
-		fwinfo.Principal = proto.String(*mesosAuthPrincipal)
-		secret, err := ioutil.ReadFile(*mesosAuthSecretFile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		cred = &mesos.Credential{
-			Principal: proto.String(*mesosAuthPrincipal),
-			Secret:    secret,
-		}
-	}
-
-	// create the scheduler
+	fwinfo := prepareFrameworkInfo()
+	cred := prepateCredentials(fwinfo)
 	scheduler := NewNoneScheduler(exec, *cpuPerTask, *memPerTask)
+	config := prepareDriver(scheduler, fwinfo, cred)
 
-	// configure the driver
-	bindingAddress := parseIP(*address)
-	config := sched.DriverConfig{
-		Scheduler:        scheduler,
-		Framework:        fwinfo,
-		Master:           *master,
-		Credential:       cred,
-		HostnameOverride: *hostname,
-		BindingAddress:   bindingAddress,
-		BindingPort:      uint16(*port),
-		WithAuthContext: func(ctx context.Context) context.Context {
-			ctx = auth.WithLoginProvider(ctx, *authProvider)
-			ctx = sasl.WithBindingAddress(ctx, bindingAddress)
-			return ctx
-		},
-	}
 	driver, err := sched.NewMesosSchedulerDriver(config)
-
 	if err != nil {
 		log.Errorln("Unable to create a SchedulerDriver ", err.Error())
 	}
@@ -220,5 +223,4 @@ func main() {
 	if stat, err := driver.Run(); err != nil {
 		log.Infof("Framework stopped with status %s and error: %s\n", stat.String(), err.Error())
 	}
-
 }

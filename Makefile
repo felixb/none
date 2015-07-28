@@ -1,6 +1,6 @@
-.PHONY: all clean go-clean scheduler executor
+.PHONY: all clean go-clean
 
-all: go-clean go-get scheduler executor
+all: go-clean go-get none-scheduler none-executor
 
 go-clean:
 	go clean
@@ -11,8 +11,8 @@ go-get:
 clean: go-clean
 	-rm -f none-*
 
-scheduler: scheduler/*.go
-	go build -o none-$@ scheduler/*.go
+none-scheduler: scheduler/*.go
+	go build -o $@ scheduler/*.go
 
-executor: executor/*.go
-	go build -o none-$@ executor/*.go
+none-executor: executor/*.go
+	go build -o $@ executor/*.go
