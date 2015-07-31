@@ -34,6 +34,7 @@ type NoneScheduler struct {
 	C             chan *Command
 	nextCommand   *Command
 	commands      map[string]*Command
+	container     *mesos.ContainerInfo
 	uris          []*mesos.CommandInfo_URI
 	frameworkId   *mesos.FrameworkID
 	cpuPerTask    float64
@@ -44,11 +45,12 @@ type NoneScheduler struct {
 	running       bool
 }
 
-func NewNoneScheduler(uris []*mesos.CommandInfo_URI, cpus, mem float64) *NoneScheduler {
+func NewNoneScheduler(container *mesos.ContainerInfo, uris []*mesos.CommandInfo_URI, cpus, mem float64) *NoneScheduler {
 	return &NoneScheduler{
 		C:             make(chan *Command, 10),
 		nextCommand:   nil,
 		commands:      make(map[string]*Command, 10),
+		container:     container,
 		uris:          uris,
 		frameworkId:   nil,
 		cpuPerTask:    cpus,
@@ -128,7 +130,7 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 					util.NewScalarResource("cpus", sched.cpuPerTask),
 					util.NewScalarResource("mem", sched.memPerTask),
 				},
-				Data: []byte(sched.nextCommand.Cmd),
+				Container: sched.container,
 			}
 			log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
 

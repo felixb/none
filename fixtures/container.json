@@ -1,0 +1,37 @@
+{
+    "type": "DOCKER",
+    "docker": {
+        "image": "group/image",
+        "network": "BRIDGE",
+        "portMappings": [
+            {
+                "containerPort": 8080,
+                "hostPort": 0,
+                "servicePort": 9000,
+                "protocol": "tcp"
+            },
+            {
+                "containerPort": 161,
+                "hostPort": 0,
+                "protocol": "udp"
+            }
+        ],
+        "privileged": false,
+        "parameters": [
+            { "key": "a-docker-option", "value": "xxx" },
+            { "key": "b-docker-option", "value": "yyy" }
+        ]
+    },
+    "volumes": [
+        {
+            "containerPath": "/etc/a",
+            "hostPath": "/var/data/a",
+            "mode": "RO"
+        },
+        {
+            "containerPath": "/etc/b",
+            "hostPath": "/var/data/b",
+            "mode": "RW"
+        }
+    ]
+}

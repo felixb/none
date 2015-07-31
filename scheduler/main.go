@@ -20,6 +20,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -68,6 +69,8 @@ var (
 	cpuPerTask          = flag.Float64("cpu-per-task", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
 	memPerTask          = flag.Float64("mem-per-task", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
 	command             = flag.String("command", "", "Command to run on the cluster")
+	containerJson       = flag.String("container", "", "Container definition as JSON, overrules dockerImage")
+	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
 )
 
 // parse command line flags
@@ -169,6 +172,24 @@ func prepateCredentials(fwinfo *mesos.FrameworkInfo) *mesos.Credential {
 	}
 }
 
+func prepareContainer() *mesos.ContainerInfo {
+	if containerJson != nil && *containerJson != "" {
+		var ci mesos.ContainerInfo
+		if err := json.Unmarshal([]byte(*containerJson), &ci); err != nil {
+			log.Fatalf("Unable to parse container info: %s", err)
+		}
+		return &ci
+	} else if dockerImage != nil && *dockerImage != "" {
+		return &mesos.ContainerInfo{
+			Type: mesos.ContainerInfo_DOCKER.Enum(),
+			Docker: &mesos.ContainerInfo_DockerInfo{
+				Image: dockerImage,
+			},
+		}
+	}
+	return nil
+}
+
 // create the driver data structure
 func prepareDriver(scheduler *NoneScheduler, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) sched.DriverConfig {
 	bindingAddress := parseIP(*address)
@@ -225,7 +246,7 @@ func main() {
 	}
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
-	scheduler := NewNoneScheduler(exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
+	scheduler := NewNoneScheduler(prepareContainer(), exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
 	config := prepareDriver(scheduler, fwinfo, cred)
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
