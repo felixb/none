@@ -1,6 +1,8 @@
-.PHONY: all clean go-clean get-deps test
+.PHONY: all clean go-clean get-deps build test
 
 all: go-clean none-scheduler test
+
+build: go-clean none-scheduler
 
 get-deps:
 	go get -t -d -v ./...

@@ -1,21 +1,3 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package main
 
 import (
@@ -27,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"github.com/gogo/protobuf/proto"
@@ -47,7 +28,6 @@ const (
 	DEFAULT_MEM_PER_TASK  = 128
 	DEFAULT_ARTIFACT_PORT = 10080
 	DEFAULT_DRIVER_PORT   = 10050
-	EXECUTOR_FILENAME     = "none-executor"
 	WORKDIR_ARCHIVE       = "workdir.tar.gz"
 )
 
@@ -64,7 +44,6 @@ var (
 	mesosAuthSecretFile = flag.String("mesos-authentication-secret-file", "", "Mesos authentication secret file.")
 	user                = flag.String("user", "", "Run task as specified user. Defaults to current user.")
 	framworkName        = flag.String("framework-name", "NONE", "Framework name")
-	executorPath        = flag.String("executor", filepath.Join(filepath.Dir(os.Args[0]), EXECUTOR_FILENAME), "Executor binary")
 	sendWorkdir         = flag.Bool("send-workdir", true, "Send current working dir to executor.")
 	cpuPerTask          = flag.Float64("cpu-per-task", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
 	memPerTask          = flag.Float64("mem-per-task", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
