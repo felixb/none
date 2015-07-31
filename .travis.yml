@@ -4,4 +4,4 @@ go:
   - 1.3
   - tip
 
-install: make go-get
+install: make get-deps
