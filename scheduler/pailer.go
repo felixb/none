@@ -31,6 +31,8 @@ import (
 
 const (
 	PAILER_CHUNK_SIZE = 50000
+	PAILER_INTERVAL   = 1 * time.Second
+	PAILER_STOP_DELAY = 3 * time.Second
 )
 
 type Pailer struct {
@@ -116,16 +118,21 @@ func (p *Pailer) tick() {
 func (p *Pailer) Start() {
 	log.Infof("Start pailing: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
 	p.running = true
-	p.ticker = time.NewTicker(1 * time.Second)
+	p.ticker = time.NewTicker(PAILER_INTERVAL)
 	go p.tick()
 }
 
 func (p *Pailer) Stop() {
-	log.Infof("Stopping pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
-	p.running = false
+	go p.stop()
 }
 
 func (p *Pailer) Wait() {
 	log.Infof("Waiting for pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
 	<-p.wait
+}
+
+func (p *Pailer) stop() {
+	time.Sleep(PAILER_STOP_DELAY)
+	log.Infof("Stopping pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
+	p.running = false
 }
