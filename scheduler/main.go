@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
@@ -73,6 +74,10 @@ var (
 func init() {
 	flag.Parse()
 	log.Infoln("Initializing the None Scheduler...")
+	// each pailer is generating 2 threads which is waiting most of the time
+	numThreads := runtime.NumCPU()*2 + 1
+	log.Infof("Setting max number of threads to %d", numThreads)
+	runtime.GOMAXPROCS(numThreads)
 }
 
 // returns uri pointing to artifact
@@ -108,23 +113,17 @@ func tarWorkdir() *string {
 
 // server workdir and executor artifacts
 // returns (executor command, artifact uris)
-func exportArtifacts(workdirPath *string) (string, []*mesos.CommandInfo_URI) {
+func exportArtifacts(workdirPath *string) []*mesos.CommandInfo_URI {
 	executorUris := []*mesos.CommandInfo_URI{}
-	executorCmd := filepath.Base(*executorPath)
-	uri := serveArtifact(*executorPath, executorCmd)
-	executorUris = append(executorUris, &mesos.CommandInfo_URI{Value: uri, Executable: proto.Bool(true)})
-
 	if workdirPath != nil {
 		uri := serveArtifact(*workdirPath, WORKDIR_ARCHIVE)
 		executorUris = append(executorUris, &mesos.CommandInfo_URI{Value: uri, Executable: proto.Bool(false)})
 	}
 
-	executorCommand := fmt.Sprintf("./%s", executorCmd)
-
 	go http.ListenAndServe(fmt.Sprintf("%s:%d", *address, *artifactPort), nil)
 	log.Infoln("Serving executor artifacts...")
 
-	return executorCommand, executorUris
+	return executorUris
 }
 
 // create the framework data structure
@@ -202,7 +201,7 @@ func parseIP(address string) net.IP {
 }
 
 func startCommand(scheduler *NoneScheduler, cmd *string) {
-	scheduler.Commands <- &Command{
+	scheduler.C <- &Command{
 		Cmd: *cmd,
 	}
 }
@@ -214,7 +213,7 @@ func startcommands(scheduler *NoneScheduler) {
 		startCommand(scheduler, &cmd)
 		cmd, err = reader.ReadString('\n')
 	}
-	close(scheduler.Commands)
+	close(scheduler.C)
 }
 
 // ----------------------- func main() ------------------------- //
@@ -224,10 +223,9 @@ func main() {
 	if workdirPath != nil {
 		defer os.Remove(*workdirPath)
 	}
-	exec := prepareExecutorInfo(exportArtifacts(workdirPath))
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
-	scheduler := NewNoneScheduler(exec, *cpuPerTask, *memPerTask)
+	scheduler := NewNoneScheduler(exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
 	config := prepareDriver(scheduler, fwinfo, cred)
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
@@ -238,7 +236,7 @@ func main() {
 	if command != nil && *command != "" {
 		// queue single command for execution
 		startCommand(scheduler, command)
-		close(scheduler.Commands)
+		close(scheduler.C)
 	} else {
 		// queue commands from stdin for execution
 		// non-blocking

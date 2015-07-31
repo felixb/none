@@ -1,18 +1,18 @@
-.PHONY: all clean go-clean
+.PHONY: all clean go-clean get-deps test
 
-all: go-clean go-get none-scheduler none-executor
+all: go-clean get-deps test none-scheduler
+
+get-deps:
+	go get -d -a ./*/*.go
+
+test:
+	go test ./...
 
 go-clean:
 	go clean
-
-go-get:
-	go get -d -a ./*/*.go
 
 clean: go-clean
 	-rm -f none-*
 
 none-scheduler: scheduler/*.go
 	go build -o $@ scheduler/*.go
-
-none-executor: executor/*.go
-	go build -o $@ executor/*.go

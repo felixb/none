@@ -1,0 +1,161 @@
+{
+  "activated_slaves": 1,
+  "build_date": "2015-05-05 06:15:50",
+  "build_time": 1430806550,
+  "build_user": "root",
+  "completed_frameworks": [],
+  "deactivated_slaves": 0,
+  "elected_time": 1438281506.0769,
+  "failed_tasks": 0,
+  "finished_tasks": 0,
+  "flags": {},
+  "frameworks": [
+    {
+      "active": true,
+      "checkpoint": false,
+      "completed_tasks": [],
+      "failover_timeout": 0,
+      "hostname": "t420",
+      "id": "20150730-183810-177048842-5050-1233-0001",
+      "name": "NONE",
+      "offered_resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "offers": [],
+      "registered_time": 1438282104.72323,
+      "resources": {
+        "cpus": 0.1,
+        "disk": 0,
+        "mem": 50
+      },
+      "role": "*",
+      "tasks": [
+        {
+          "executor_id": "",
+          "framework_id": "20150730-183810-177048842-5050-1233-0001",
+          "id": "1",
+          "labels": [],
+          "name": "none-task-1",
+          "resources": {
+            "cpus": 0.1,
+            "disk": 0,
+            "mem": 50
+          },
+          "slave_id": "20150730-183810-177048842-5050-1233-S0",
+          "state": "TASK_RUNNING",
+          "statuses": [
+            {
+              "state": "TASK_RUNNING",
+              "timestamp": 1438282105.76094
+            }
+          ]
+        }
+      ],
+      "unregistered_time": 0,
+      "used_resources": {
+        "cpus": 0.1,
+        "disk": 0,
+        "mem": 50
+      },
+      "user": "flx",
+      "webui_url": ""
+    },
+    {
+      "active": true,
+      "checkpoint": true,
+      "completed_tasks": [],
+      "failover_timeout": 604800,
+      "hostname": "mesos.vm",
+      "id": "20150726-153032-16842879-5050-1202-0000",
+      "name": "chronos-2.3.3",
+      "offered_resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "offers": [],
+      "registered_time": 1438281536.15989,
+      "reregistered_time": 1438281536.15995,
+      "resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "role": "*",
+      "tasks": [],
+      "unregistered_time": 0,
+      "used_resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "user": "root",
+      "webui_url": "http://mesos:4400"
+    },
+    {
+      "active": true,
+      "checkpoint": true,
+      "completed_tasks": [],
+      "failover_timeout": 604800,
+      "hostname": "mesos.vm",
+      "id": "20150726-153032-16842879-5050-1202-0001",
+      "name": "marathon",
+      "offered_resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "offers": [],
+      "registered_time": 1438281520.15897,
+      "reregistered_time": 1438281520.15902,
+      "resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "role": "*",
+      "tasks": [],
+      "unregistered_time": 0,
+      "used_resources": {
+        "cpus": 0,
+        "disk": 0,
+        "mem": 0
+      },
+      "user": "root",
+      "webui_url": "http://mesos:8080"
+    }
+  ],
+  "git_sha": "d6309f92a7f9af3ab61a878403e3d9c284ea87e0",
+  "git_tag": "0.22.1",
+  "hostname": "10.141.141.10",
+  "id": "20150730-183810-177048842-5050-1233",
+  "killed_tasks": 1,
+  "leader": "master@10.141.141.10:5050",
+  "log_dir": "/var/log/mesos",
+  "lost_tasks": 0,
+  "orphan_tasks": [],
+  "pid": "master@10.141.141.10:5050",
+  "slaves": [
+    {
+      "active": true,
+      "attributes": {},
+      "hostname": "10.141.141.10",
+      "id": "20150730-183810-177048842-5050-1233-S0",
+      "pid": "slave(1)@127.0.1.1:5051",
+      "registered_time": 1438281506.72761,
+      "resources": {
+        "cpus": 2,
+        "disk": 34068,
+        "mem": 1000,
+        "ports": "[31000-32000]"
+      }
+    }
+  ],
+  "staged_tasks": 2,
+  "start_time": 1438281490.59982,
+  "started_tasks": 0,
+  "unregistered_frameworks": [],
+  "version": "0.22.1"
+}
