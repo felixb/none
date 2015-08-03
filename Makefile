@@ -29,7 +29,7 @@ release:
 
 tag-release:
 	@test -n "$(VERSION)"
-	grep -q '^## v$(VERSION)$' CHANGELOG.md
+	grep -q '^## v$(VERSION)' CHANGELOG.md
 	git commit -am "prepare release NONE v$(VERSION)"
 	git tag -m "NONE v$(VERSION)" v$(VERSION)
 
