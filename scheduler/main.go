@@ -253,4 +253,8 @@ func main() {
 	if stat, err := driver.Run(); err != nil {
 		log.Infof("Framework stopped with status %s and error: %s\n", stat.String(), err.Error())
 	}
+
+	if scheduler.HasFailures() {
+		os.Exit(1)
+	}
 }

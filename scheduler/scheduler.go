@@ -24,6 +24,7 @@ type NoneScheduler struct {
 	memPerTask    float64
 	tasksLaunched int
 	tasksFinished int
+	tasksFailed   int
 	totalTasks    int
 	running       bool
 }
@@ -40,9 +41,14 @@ func NewNoneScheduler(container *mesos.ContainerInfo, uris []*mesos.CommandInfo_
 		memPerTask:    mem,
 		tasksLaunched: 0,
 		tasksFinished: 0,
+		tasksFailed:   0,
 		totalTasks:    0,
 		running:       true,
 	}
+}
+
+func (sched *NoneScheduler) HasFailures() bool {
+	return sched.tasksFailed > 0
 }
 
 func (sched *NoneScheduler) Registered(driver sched.SchedulerDriver, frameworkId *mesos.FrameworkID, masterInfo *mesos.MasterInfo) {
@@ -142,6 +148,10 @@ func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *m
 		status.GetState() == mesos.TaskState_TASK_FAILED {
 		sched.tasksFinished++
 
+		if status.GetState() == mesos.TaskState_TASK_FAILED {
+			sched.tasksFailed++
+		}
+
 		if c != nil {
 			c.StopPailers()
 		}
@@ -158,6 +168,7 @@ func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *m
 
 	if status.GetState() == mesos.TaskState_TASK_LOST ||
 		status.GetState() == mesos.TaskState_TASK_KILLED {
+		sched.tasksFailed++
 		log.Infoln(
 			"Aborting because task", status.TaskId.GetValue(),
 			"is in unexpected state", status.State.String(),
