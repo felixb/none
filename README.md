@@ -12,13 +12,8 @@ Stdout and Stderr is forwarded to your terminal.
 
 Example for running a single command:
 
-    $ ./none-scheduler -address=10.141.141.1  -master=10.141.141.10:5050  -command 'echo woooohoooooooo' 2>/dev/null
-    Registered executor on 10.141.141.10
-    Starting task 1
-    sh -c 'echo woooohoooooooo'
-    Forked command at 1798
+    $ ./none-scheduler -address=10.141.141.1  -master=10.141.141.10:5050  -command 'echo woooohoooooooo'
     woooohoooooooo
-    Command exited with status 0 (pid: 1798)
 
 Example for running three commands in parallel:
 
@@ -27,10 +22,6 @@ Example for running three commands in parallel:
     > echo task 2; ls -l
     > echo task 3; uname -a
     > EOF
-    Registered executor on 10.141.141.10
-    Starting task 2
-    sh -c 'echo task 2; ls -l
-    '
     task 2
     total 21180
     drwxr-xr-x 2 flx flx     4096 Jul 31 18:06 fixtures
@@ -44,24 +35,10 @@ Example for running three commands in parallel:
     -rw-r--r-- 1 flx flx     1079 Jul 31 18:06 stderr
     -rw-r--r-- 1 flx flx       88 Jul 31 18:06 stdout
     -rw-r--r-- 1 flx flx 11018240 Jul 31 18:06 workdir.tar.gz
-    Forked command at 1845
-    Registered executor on 10.141.141.10
-    Starting task 1
-    sh -c 'echo task 1; date
-    '
     task 1
     Fri Jul 31 18:06:18 UTC 2015
-    Forked command at 1847
-    Registered executor on 10.141.141.10
-    Starting task 3
-    sh -c 'echo task 3; uname -a
-    '
-    Forked command at 1870
     task 3
     Linux mesos 3.16.0-45-generic #60~14.04.1-Ubuntu SMP Fri Jul 24 21:16:23 UTC 2015 x86_64 x86_64 x86_64 GNU/Linux
-    Command exited with status 0 (pid: 1845)
-    Command exited with status 0 (pid: 1847)
-    Command exited with status 0 (pid: 1870)
 
 ### Full list of available command line options
 
