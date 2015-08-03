@@ -1,4 +1,4 @@
-.PHONY: all clean go-clean get-deps build test
+.PHONY: all clean go-clean get-deps build test release tag-release next-release
 
 all: go-clean none-scheduler test
 
@@ -18,3 +18,22 @@ none-scheduler: scheduler/*.go
 
 test:
 	go test ./...
+
+release:
+	@test -n "$(VERSION)"
+	@echo "prepare release of NONE v$(VERSION)"
+	grep -q '^## v$(VERSION)' CHANGELOG.md
+	sed -e 's/## v$(VERSION).*/## v$(VERSION)/' -i CHANGELOG.md
+	sed -e 's/VERSION = .*/VERSION = "$(VERSION)"/' -i scheduler/version.go
+	make all
+
+tag-release:
+	@test -n "$(VERSION)"
+	grep -q '^## v$(VERSION)$' CHANGELOG.md
+	git tag -m "NONE v$(VERSION)" v$(VERSION)
+
+next-release:
+	@test -n "$(VERSION)"
+	@echo "prepare next development cycle: NONE v$(VERSION)-snapshot"
+	sed -e '2a## v$(VERSION) (unreleased)\n\n* nothing here yet\n' -i CHANGELOG.md
+	sed -e 's/VERSION = .*/VERSION = "$(VERSION)-snapshot"/' -i scheduler/version.go

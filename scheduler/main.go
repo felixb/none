@@ -50,6 +50,7 @@ var (
 	command             = flag.String("command", "", "Command to run on the cluster")
 	containerJson       = flag.String("container", "", "Container definition as JSON, overrules dockerImage")
 	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
+	version             = flag.Bool("version", false, "Show NONE version.")
 )
 
 // parse command line flags
@@ -219,6 +220,11 @@ func startcommands(scheduler *NoneScheduler) {
 // ----------------------- func main() ------------------------- //
 
 func main() {
+	if *version {
+		fmt.Printf("NONE v%s\n", VERSION)
+		os.Exit(0)
+	}
+
 	workdirPath := tarWorkdir()
 	if workdirPath != nil {
 		defer os.Remove(*workdirPath)
