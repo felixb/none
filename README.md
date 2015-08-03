@@ -67,51 +67,51 @@ Example for running three commands in parallel:
 
 #### Communication
 
- * `-address="your-hostname":` Binding address for framework and artifact server
- * `-artifactPort=10080:` Binding port for artifact server
- * `-hostname="":` Overwrite hostname
- * `-master="127.0.0.1:5050":` Master address <ip:port>
- * `-port=10050:` Binding port for framework
+ * `-address="your-hostname"`: Binding address for framework and artifact server
+ * `-artifactPort=10080`: Binding port for artifact server
+ * `-hostname=""`: Overwrite hostname
+ * `-master="127.0.0.1:5050"`: Master address <ip:port>
+ * `-port=10050`: Binding port for framework
 
 #### Framework
 
- * `-framework-name="NONE":` Framework name
- * `-decode-routines=1:` Number of decoding routines
- * `-encode-routines=1:` Number of encoding routines
- * `-send-routines=1:` Number of network sending routines
+ * `-framework-name="NONE"`: Framework name
+ * `-decode-routines=1`: Number of decoding routines
+ * `-encode-routines=1`: Number of encoding routines
+ * `-send-routines=1`: Number of network sending routines
 
 #### Tasks
 
- * `-command="":` Command to run on the cluster
- * `-container="":` Container definition as JSON, overrules dockerImage
- * `-cpu-per-task=1:` CPU reservation for task execution
- * `-docker-image="":` Docker image for running the commands in
- * `-mem-per-task=128:` Memory resveration for task execution
- * `-user="":` Run task as specified user. Defaults to current user.
- * `-send-workdir=true:` Send current working dir to executor.
+ * `-command=""`: Command to run on the cluster
+ * `-container=""`: Container definition as JSON, overrules dockerImage
+ * `-cpu-per-task=1`: CPU reservation for task execution
+ * `-docker-image=""`: Docker image for running the commands in
+ * `-mem-per-task=128`: Memory resveration for task execution
+ * `-user=""`: Run task as specified user. Defaults to current user.
+ * `-send-workdir=true`: Send current working dir to executor.
 
 #### Authentication
 
- * `-mesos-authentication-principal="":` Mesos authentication principal.
- * `-mesos-authentication-provider="SASL":` Authentication provider to use, default is SASL that supports mechanisms: [CRAM-MD5]
- * `-mesos-authentication-secret-file="":` Mesos authentication secret file.
+ * `-mesos-authentication-principal=""`: Mesos authentication principal.
+ * `-mesos-authentication-provider="SASL"`: Authentication provider to use, default is SASL that supports mechanisms: [CRAM-MD5]
+ * `-mesos-authentication-secret-file=""`: Mesos authentication secret file.
 
 #### Logging
 
- * `-alsologtostderr=false:` log to standard error as well as files
- * `-log_backtrace_at=:0:` when logging hits line file:N, emit a stack trace
- * `-log_dir="":` If non-empty, write log files in this directory
- * `-logtostderr=false:` log to standard error instead of files
- * `-stderrthreshold=0:` logs at or above this threshold go to stderr
- * `-v=0:` log level for V logs
- * `-vmodule=:` comma-separated list of pattern=N settings for file-filtered logging
+ * `-alsologtostderr=false`: log to standard error as well as files
+ * `-log_backtrace_at=:0`: when logging hits line file:N, emit a stack trace
+ * `-log_dir=""`: If non-empty, write log files in this directory
+ * `-logtostderr=false`: log to standard error instead of files
+ * `-stderrthreshold=0`: logs at or above this threshold go to stderr
+ * `-v=0`: log level for V logs
+ * `-vmodule=`: comma-separated list of pattern=N settings for file-filtered logging
 
 ## Build it
 
 Build NONE with make by running:
 
- * `make get-deps
- * `make build
+ * `make get-deps`
+ * `make build`
 
 ## Contribute
 
