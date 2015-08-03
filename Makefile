@@ -30,7 +30,7 @@ release:
 tag-release:
 	@test -n "$(VERSION)"
 	grep -q '^## v$(VERSION)' CHANGELOG.md
-	git commit -am "prepare release NONE v$(VERSION)"
+	git commit -m "prepare release NONE v$(VERSION)" CHANGELOG.md scheduler/version.go
 	git tag -m "NONE v$(VERSION)" v$(VERSION)
 
 next-release:
@@ -38,3 +38,4 @@ next-release:
 	@echo "prepare next development cycle: NONE v$(VERSION)-snapshot"
 	sed -e '2a## v$(VERSION) (unreleased)\n\n* nothing here yet\n' -i CHANGELOG.md
 	sed -e 's/VERSION = .*/VERSION = "$(VERSION)-snapshot"/' -i scheduler/version.go
+	git commit -m "prepare next development cycle: NONE v$(VERSION)" CHANGELOG.md scheduler/version.go
