@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -97,17 +98,11 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 				Value: proto.String(tId),
 			}
 
-			shell := true
-
 			task := &mesos.TaskInfo{
 				Name:    proto.String("none-task-" + taskId.GetValue()),
 				TaskId:  taskId,
 				SlaveId: offer.SlaveId,
-				Command: &mesos.CommandInfo{
-					Shell: &shell,
-					Value: &sched.nextCommand.Cmd,
-					Uris:  sched.uris,
-				},
+				Command: sched.prepareCommandInfo(sched.nextCommand),
 				Resources: []*mesos.Resource{
 					util.NewScalarResource("cpus", sched.cpuPerTask),
 					util.NewScalarResource("mem", sched.memPerTask),
@@ -138,8 +133,8 @@ func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *m
 		c.Status = status
 
 		if status.GetState() == mesos.TaskState_TASK_RUNNING {
-			c.StdoutPailer = sched.createAndStartPailer(driver, status, "stdout", os.Stdout)
-			c.StderrPailer = sched.createAndStartPailer(driver, status, "stderr", os.Stderr)
+			c.StdoutPailer = sched.createAndStartPailer(driver, status, "cmd.stdout", os.Stdout)
+			c.StderrPailer = sched.createAndStartPailer(driver, status, "cmd.stderr", os.Stderr)
 		}
 	}
 
@@ -191,6 +186,25 @@ func (sched *NoneScheduler) Error(driver sched.SchedulerDriver, err string) {
 }
 
 // private
+
+func (sched *NoneScheduler) prepareCommandInfo(cmd *Command) *mesos.CommandInfo {
+	value := "sh"
+	shell := false
+	var args []string
+
+	if sched.container == nil {
+		args = []string{"", "-c", fmt.Sprintf("( %s ) > cmd.stdout 2> cmd.stderr", sched.nextCommand.Cmd)}
+	} else {
+		args = []string{"-c", fmt.Sprintf("( %s ) > /${MESOS_SANDBOX}/cmd.stdout 2> /${MESOS_SANDBOX}/cmd.stderr", sched.nextCommand.Cmd)}
+	}
+
+	return &mesos.CommandInfo{
+		Shell:     &shell,
+		Value:     &value,
+		Arguments: args,
+		Uris:      sched.uris,
+	}
+}
 
 func (sched *NoneScheduler) fetchNextCommand() {
 	select {
