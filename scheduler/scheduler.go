@@ -96,29 +96,8 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 			sched.cpuPerTask <= remainingCpus &&
 			sched.memPerTask <= remainingMems {
 
-			sched.tasksLaunched++
-
-			tId := strconv.Itoa(sched.tasksLaunched)
-			sched.nextCommand.Id = tId
-			taskId := &mesos.TaskID{
-				Value: proto.String(tId),
-			}
-
-			task := &mesos.TaskInfo{
-				Name:    proto.String("none-task-" + taskId.GetValue()),
-				TaskId:  taskId,
-				SlaveId: offer.SlaveId,
-				Command: sched.prepareCommandInfo(sched.nextCommand),
-				Resources: []*mesos.Resource{
-					util.NewScalarResource("cpus", sched.cpuPerTask),
-					util.NewScalarResource("mem", sched.memPerTask),
-				},
-				Container: sched.container,
-			}
-			log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
-
+			task := sched.prepareTaskInfo(offer)
 			tasks = append(tasks, task)
-			sched.commands[tId] = sched.nextCommand
 
 			remainingCpus -= sched.cpuPerTask
 			remainingMems -= sched.memPerTask
@@ -197,6 +176,32 @@ func (sched *NoneScheduler) Error(driver sched.SchedulerDriver, err string) {
 }
 
 // private
+
+func (sched *NoneScheduler) prepareTaskInfo(offer *mesos.Offer) *mesos.TaskInfo {
+	tId := strconv.Itoa(sched.tasksLaunched)
+	sched.tasksLaunched++
+	sched.nextCommand.Id = tId
+	sched.commands[tId] = sched.nextCommand
+
+	taskId := &mesos.TaskID{
+		Value: proto.String(tId),
+	}
+
+	task := &mesos.TaskInfo{
+		Name:    proto.String("none-task-" + taskId.GetValue()),
+		TaskId:  taskId,
+		SlaveId: offer.SlaveId,
+		Command: sched.prepareCommandInfo(sched.nextCommand),
+		Resources: []*mesos.Resource{
+			util.NewScalarResource("cpus", sched.cpuPerTask),
+			util.NewScalarResource("mem", sched.memPerTask),
+		},
+		Container: sched.container,
+	}
+	log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
+
+	return task
+}
 
 func (sched *NoneScheduler) prepareCommandInfo(cmd *Command) *mesos.CommandInfo {
 	value := "sh"
