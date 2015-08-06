@@ -18,7 +18,6 @@ import (
 	"github.com/mesos/mesos-go/auth/sasl"
 	"github.com/mesos/mesos-go/auth/sasl/mech"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
 	"golang.org/x/net/context"
 )
@@ -52,6 +51,9 @@ var (
 	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
 	constraints         = flag.String("constraints", "", "Constraints for selecting mesos slaves, format: 'attribute:operant[:value][;..]'")
 	version             = flag.Bool("version", false, "Show NONE version.")
+
+	containerInfo *mesos.ContainerInfo
+	uris          []*mesos.CommandInfo_URI
 )
 
 // parse command line flags
@@ -118,24 +120,6 @@ func prepareFrameworkInfo() *mesos.FrameworkInfo {
 	}
 }
 
-// create the executor data structure
-func prepareExecutorInfo(executorCommand string, executorUris []*mesos.CommandInfo_URI) *mesos.ExecutorInfo {
-	shell := false
-
-	// Create mesos scheduler driver.
-	return &mesos.ExecutorInfo{
-		ExecutorId: util.NewExecutorID("default"),
-		Name:       proto.String("NONE Executor"),
-		Source:     proto.String("none/executor"),
-		Command: &mesos.CommandInfo{
-			Value:     proto.String(executorCommand),
-			Uris:      executorUris,
-			Shell:     &shell,
-			Arguments: []string{""},
-		},
-	}
-}
-
 // create credentials data structure
 func prepateCredentials(fwinfo *mesos.FrameworkInfo) *mesos.Credential {
 	if *mesosAuthPrincipal != "" {
@@ -172,7 +156,7 @@ func prepareContainer() *mesos.ContainerInfo {
 }
 
 // create the driver data structure
-func prepareDriver(scheduler *NoneScheduler, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) sched.DriverConfig {
+func prepareDriver(scheduler sched.Scheduler, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) sched.DriverConfig {
 	bindingAddress := parseIP(*address)
 	return sched.DriverConfig{
 		Scheduler:        scheduler,
@@ -202,20 +186,36 @@ func parseIP(address string) net.IP {
 	return addr[0]
 }
 
-func startCommand(scheduler *NoneScheduler, cmd *string) {
-	scheduler.C <- &Command{
-		Cmd: *cmd,
-	}
+func startCommand(cmdq *CommandQueue, cmd *string) {
+	cmdq.Enqueue(&Command{
+		Cmd:           *cmd,
+		CpuReq:        *cpuPerTask,
+		MemReq:        *memPerTask,
+		ContainerInfo: containerInfo,
+		Uris:          uris,
+	})
 }
 
-func startcommands(scheduler *NoneScheduler) {
+func startCommands(cmdq *CommandQueue) {
 	reader := bufio.NewReader(os.Stdin)
 	cmd, err := reader.ReadString('\n')
 	for err == nil {
-		startCommand(scheduler, &cmd)
+		startCommand(cmdq, &cmd)
 		cmd, err = reader.ReadString('\n')
 	}
-	close(scheduler.C)
+	cmdq.Close()
+}
+
+func queueCommands(cmdq *CommandQueue) {
+	if command != nil && *command != "" {
+		// queue single command for execution
+		startCommand(cmdq, command)
+		cmdq.Close()
+	} else {
+		// queue commands from stdin for execution
+		// non-blocking
+		go startCommands(cmdq)
+	}
 }
 
 // ----------------------- func main() ------------------------- //
@@ -230,13 +230,16 @@ func main() {
 	if workdirPath != nil {
 		defer os.Remove(*workdirPath)
 	}
+	uris = exportArtifacts(workdirPath)
+	containerInfo = prepareContainer()
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
 	cs, err := ParseConstraints(constraints)
 	if err != nil {
 		log.Errorf("Error parsing constraints: %s", err)
 	}
-	scheduler := NewNoneScheduler(prepareContainer(), cs, exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
+	cmdq := NewCommandQueue()
+	scheduler := NewNoneScheduler(cmdq, cs)
 	config := prepareDriver(scheduler, fwinfo, cred)
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
@@ -244,15 +247,7 @@ func main() {
 		log.Errorln("Unable to create a SchedulerDriver ", err.Error())
 	}
 
-	if command != nil && *command != "" {
-		// queue single command for execution
-		startCommand(scheduler, command)
-		close(scheduler.C)
-	} else {
-		// queue commands from stdin for execution
-		// non-blocking
-		go startcommands(scheduler)
-	}
+	queueCommands(cmdq)
 
 	// run the driver and wait for it to finish
 	if stat, err := driver.Run(); err != nil {

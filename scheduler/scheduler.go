@@ -1,10 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
@@ -14,15 +11,9 @@ import (
 )
 
 type NoneScheduler struct {
-	C             chan *Command
-	nextCommand   *Command
-	commands      map[string]*Command
-	container     *mesos.ContainerInfo
-	uris          []*mesos.CommandInfo_URI
+	queue         CommandQueuer
 	frameworkId   *mesos.FrameworkID
 	constraints   Constraints
-	cpuPerTask    float64
-	memPerTask    float64
 	tasksLaunched int
 	tasksFinished int
 	tasksFailed   int
@@ -30,17 +21,11 @@ type NoneScheduler struct {
 	running       bool
 }
 
-func NewNoneScheduler(container *mesos.ContainerInfo, constraints Constraints, uris []*mesos.CommandInfo_URI, cpus, mem float64) *NoneScheduler {
+func NewNoneScheduler(cmdq CommandQueuer, constraints Constraints) *NoneScheduler {
 	return &NoneScheduler{
-		C:             make(chan *Command, 10),
-		nextCommand:   nil,
-		commands:      make(map[string]*Command, 10),
-		container:     container,
-		uris:          uris,
+		queue:         cmdq,
 		frameworkId:   nil,
 		constraints:   constraints,
-		cpuPerTask:    cpus,
-		memPerTask:    mem,
 		tasksLaunched: 0,
 		tasksFinished: 0,
 		tasksFailed:   0,
@@ -66,11 +51,7 @@ func (sched *NoneScheduler) Disconnected(sched.SchedulerDriver) {
 
 // process incoming offers and try to schedule new tasks as they come in on the channel
 func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
-	if sched.nextCommand == nil {
-		sched.fetchNextCommand()
-	}
-
-	if sched.nextCommand == nil {
+	if sched.queue.Next() == nil {
 		// no command to launch, we don't need to parse anything
 		return
 	}
@@ -106,16 +87,17 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 
 		// try to schedule as may tasks as possible for this single offer
 		var tasks []*mesos.TaskInfo
-		for sched.nextCommand != nil &&
-			sched.cpuPerTask <= remainingCpus &&
-			sched.memPerTask <= remainingMems {
+		for sched.queue.GetCommand() != nil &&
+			sched.queue.GetCommand().CpuReq <= remainingCpus &&
+			sched.queue.GetCommand().MemReq <= remainingMems {
 
-			task := sched.prepareTaskInfo(offer)
+			c := sched.queue.GetCommand()
+			task := sched.prepareTaskInfo(offer, c)
 			tasks = append(tasks, task)
 
-			remainingCpus -= sched.cpuPerTask
-			remainingMems -= sched.memPerTask
-			sched.fetchNextCommand()
+			remainingCpus -= c.CpuReq
+			remainingMems -= c.MemReq
+			sched.queue.Next()
 		}
 		log.Infoln("Launching", len(tasks), "tasks for offer", offer.Id.GetValue())
 		driver.LaunchTasks([]*mesos.OfferID{offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
@@ -123,17 +105,18 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 }
 
 func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
-	log.Infoln("Status update: task", status.TaskId.GetValue(), "is in state", status.State.Enum().String())
+	taskId := status.GetTaskId().GetValue()
+	log.Infoln("Status update: task", taskId, "is in state", status.State.Enum().String())
 
-	c := sched.commands[status.GetTaskId().GetValue()]
+	c := sched.queue.GetCommandById(taskId)
 	if c == nil {
-		log.Errorf("Unable to find command for task %s", status.GetTaskId().GetValue())
+		log.Errorln("Unable to find command for task", taskId)
 	} else {
 		c.Status = status
 
 		if status.GetState() == mesos.TaskState_TASK_RUNNING {
-			c.StdoutPailer = sched.createAndStartPailer(driver, status, "cmd.stdout", os.Stdout)
-			c.StderrPailer = sched.createAndStartPailer(driver, status, "cmd.stderr", os.Stderr)
+			c.StdoutPailer = sched.createAndStartPailer(status, "cmd.stdout", os.Stdout)
+			c.StderrPailer = sched.createAndStartPailer(status, "cmd.stderr", os.Stderr)
 		}
 	}
 
@@ -153,7 +136,7 @@ func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *m
 	// stop if Commands channel was closed and all tasks have finished
 	if !sched.running && sched.tasksFinished >= sched.totalTasks {
 		log.Infoln("Total tasks completed, stopping framework.")
-		for _, c := range sched.commands {
+		for _, c := range sched.queue.GetCommands() {
 			c.WaitForPailers()
 		}
 		driver.Stop(false)
@@ -163,7 +146,7 @@ func (sched *NoneScheduler) StatusUpdate(driver sched.SchedulerDriver, status *m
 		status.GetState() == mesos.TaskState_TASK_KILLED {
 		sched.tasksFailed++
 		log.Infoln(
-			"Aborting because task", status.TaskId.GetValue(),
+			"Aborting because task", taskId,
 			"is in unexpected state", status.State.String(),
 			"with message", status.GetMessage(),
 		)
@@ -176,13 +159,15 @@ func (sched *NoneScheduler) OfferRescinded(driver sched.SchedulerDriver, offer *
 }
 
 func (sched *NoneScheduler) FrameworkMessage(driver sched.SchedulerDriver, exec *mesos.ExecutorID, slave *mesos.SlaveID, message string) {
-	log.Infof("Framework message: %s", message)
+	log.Infoln("Framework message:", message)
 }
 
-func (sched *NoneScheduler) SlaveLost(driver sched.SchedulerDriver, offer *mesos.SlaveID) {
-	log.Infoln("Lost slave", *offer)
+func (sched *NoneScheduler) SlaveLost(driver sched.SchedulerDriver, slave *mesos.SlaveID) {
+	log.Infoln("Lost slave", *slave)
 }
-func (sched *NoneScheduler) ExecutorLost(sched.SchedulerDriver, *mesos.ExecutorID, *mesos.SlaveID, int) {
+
+func (sched *NoneScheduler) ExecutorLost(driver sched.SchedulerDriver, executor *mesos.ExecutorID, slave *mesos.SlaveID, i int) {
+	log.Infoln("Lost executor", *executor)
 }
 
 func (sched *NoneScheduler) Error(driver sched.SchedulerDriver, err string) {
@@ -191,64 +176,23 @@ func (sched *NoneScheduler) Error(driver sched.SchedulerDriver, err string) {
 
 // private
 
-func (sched *NoneScheduler) prepareTaskInfo(offer *mesos.Offer) *mesos.TaskInfo {
-	tId := strconv.Itoa(sched.tasksLaunched)
+func (sched *NoneScheduler) prepareTaskInfo(offer *mesos.Offer, c *Command) *mesos.TaskInfo {
 	sched.tasksLaunched++
-	sched.nextCommand.Id = tId
-	sched.commands[tId] = sched.nextCommand
-
-	taskId := &mesos.TaskID{
-		Value: proto.String(tId),
-	}
 
 	task := &mesos.TaskInfo{
-		Name:    proto.String("none-task-" + taskId.GetValue()),
-		TaskId:  taskId,
+		Name:    proto.String("none-task-" + c.Id),
+		TaskId:  util.NewTaskID(c.Id),
 		SlaveId: offer.SlaveId,
-		Command: sched.prepareCommandInfo(sched.nextCommand),
+		Command: c.GetCommandInfo(),
 		Resources: []*mesos.Resource{
-			util.NewScalarResource("cpus", sched.cpuPerTask),
-			util.NewScalarResource("mem", sched.memPerTask),
+			util.NewScalarResource("cpus", c.CpuReq),
+			util.NewScalarResource("mem", c.MemReq),
 		},
-		Container: sched.container,
+		Container: c.ContainerInfo,
 	}
 	log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
 
 	return task
-}
-
-func (sched *NoneScheduler) prepareCommandInfo(cmd *Command) *mesos.CommandInfo {
-	value := "sh"
-	shell := false
-	var args []string
-
-	if sched.container == nil {
-		args = []string{"", "-c", fmt.Sprintf("( %s ) > cmd.stdout 2> cmd.stderr", sched.nextCommand.Cmd)}
-	} else {
-		args = []string{"-c", fmt.Sprintf("( %s ) > /${MESOS_SANDBOX}/cmd.stdout 2> /${MESOS_SANDBOX}/cmd.stderr", sched.nextCommand.Cmd)}
-	}
-
-	return &mesos.CommandInfo{
-		Shell:     &shell,
-		Value:     &value,
-		Arguments: args,
-		Uris:      sched.uris,
-	}
-}
-
-func (sched *NoneScheduler) fetchNextCommand() {
-	select {
-	case sched.nextCommand = <-sched.C:
-		if sched.nextCommand != nil {
-			sched.totalTasks++
-			log.Infoln("Schedule next command from queue:", strings.TrimSpace(sched.nextCommand.Cmd))
-		} else {
-			// channel was closed, stop listening for new commands
-			sched.running = false
-		}
-	default:
-		sched.nextCommand = nil
-	}
 }
 
 func printer(f *os.File, out chan string) {
@@ -257,7 +201,7 @@ func printer(f *os.File, out chan string) {
 	}
 }
 
-func (sched *NoneScheduler) createAndStartPailer(driver sched.SchedulerDriver, status *mesos.TaskStatus, file string, w *os.File) *Pailer {
+func (sched *NoneScheduler) createAndStartPailer(status *mesos.TaskStatus, file string, w *os.File) *Pailer {
 	p, err := NewPailer(master, status.GetSlaveId(), sched.frameworkId, status.GetTaskId(), file)
 	if err != nil {
 		log.Errorf("Unable to start pailer for task %s: %s\n", status.GetTaskId().GetValue(), err)
