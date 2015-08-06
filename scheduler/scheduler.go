@@ -20,6 +20,7 @@ type NoneScheduler struct {
 	container     *mesos.ContainerInfo
 	uris          []*mesos.CommandInfo_URI
 	frameworkId   *mesos.FrameworkID
+	constraints   Constraints
 	cpuPerTask    float64
 	memPerTask    float64
 	tasksLaunched int
@@ -29,7 +30,7 @@ type NoneScheduler struct {
 	running       bool
 }
 
-func NewNoneScheduler(container *mesos.ContainerInfo, uris []*mesos.CommandInfo_URI, cpus, mem float64) *NoneScheduler {
+func NewNoneScheduler(container *mesos.ContainerInfo, constraints Constraints, uris []*mesos.CommandInfo_URI, cpus, mem float64) *NoneScheduler {
 	return &NoneScheduler{
 		C:             make(chan *Command, 10),
 		nextCommand:   nil,
@@ -37,6 +38,7 @@ func NewNoneScheduler(container *mesos.ContainerInfo, uris []*mesos.CommandInfo_
 		container:     container,
 		uris:          uris,
 		frameworkId:   nil,
+		constraints:   constraints,
 		cpuPerTask:    cpus,
 		memPerTask:    mem,
 		tasksLaunched: 0,
@@ -64,7 +66,23 @@ func (sched *NoneScheduler) Disconnected(sched.SchedulerDriver) {
 
 // process incoming offers and try to schedule new tasks as they come in on the channel
 func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
+	if sched.nextCommand == nil {
+		sched.fetchNextCommand()
+	}
+
+	if sched.nextCommand == nil {
+		// no command to launch, we don't need to parse anything
+		return
+	}
+
 	for _, offer := range offers {
+		// match constraints
+		if !sched.constraints.Match(offer) {
+			// skip offer if it does not match constraints
+			continue
+		}
+
+		// check resources
 		cpuResources := util.FilterResources(offer.Resources, func(res *mesos.Resource) bool {
 			return res.GetName() == "cpus"
 		})
@@ -85,10 +103,6 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 
 		remainingCpus := cpus
 		remainingMems := mems
-
-		if sched.nextCommand == nil {
-			sched.fetchNextCommand()
-		}
 
 		// try to schedule as may tasks as possible for this single offer
 		var tasks []*mesos.TaskInfo

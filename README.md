@@ -60,6 +60,7 @@ Example for running three commands in parallel:
 #### Tasks
 
  * `-command=""`: Command to run on the cluster
+ * `-constraints=""`: Constraints for selecting mesos slaves, format: `attribute:operant[:value][;..]`
  * `-container=""`: Container definition as JSON, overrules dockerImage
  * `-cpu-per-task=1`: CPU reservation for task execution
  * `-docker-image=""`: Docker image for running the commands in
@@ -82,6 +83,14 @@ Example for running three commands in parallel:
  * `-stderrthreshold=0`: logs at or above this threshold go to stderr
  * `-v=0`: log level for V logs
  * `-vmodule=`: comma-separated list of pattern=N settings for file-filtered logging
+
+### Constraints
+
+You may apply constraints for selecting mesos slaves by attributes with the `-constraints` flag.
+
+The following constraints are supported:
+
+* `EQUALS`: selecting only slaves with an attribute with exactly the specified value. `foo:EQUALS:bar` requires a slave with the attribute `foo` and value `bar`.
 
 ## Build it
 

@@ -17,7 +17,7 @@ none-scheduler: scheduler/*.go
 	go build -o $@ scheduler/*.go
 
 test:
-	go test ./...
+	go test -cover ./...
 
 release:
 	@test -n "$(VERSION)"

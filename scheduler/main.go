@@ -50,6 +50,7 @@ var (
 	command             = flag.String("command", "", "Command to run on the cluster")
 	containerJson       = flag.String("container", "", "Container definition as JSON, overrules dockerImage")
 	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
+	constraints         = flag.String("constraints", "", "Constraints for selecting mesos slaves, format: 'attribute:operant[:value][;..]'")
 	version             = flag.Bool("version", false, "Show NONE version.")
 )
 
@@ -231,7 +232,11 @@ func main() {
 	}
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
-	scheduler := NewNoneScheduler(prepareContainer(), exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
+	cs, err := ParseConstraints(constraints)
+	if err != nil {
+		log.Errorf("Error parsing constraints: %s", err)
+	}
+	scheduler := NewNoneScheduler(prepareContainer(), cs, exportArtifacts(workdirPath), *cpuPerTask, *memPerTask)
 	config := prepareDriver(scheduler, fwinfo, cred)
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
