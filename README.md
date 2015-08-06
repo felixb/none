@@ -65,6 +65,7 @@ Example for running three commands in parallel:
  * `-cpu-per-task=1`: CPU reservation for task execution
  * `-docker-image=""`: Docker image for running the commands in
  * `-mem-per-task=128`: Memory resveration for task execution
+ * `-role=""`: Run tasks with resources for specific role.
  * `-user=""`: Run task as specified user. Defaults to current user.
  * `-send-workdir=true`: Send current working dir to executor.
 

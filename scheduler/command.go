@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	mesos "github.com/mesos/mesos-go/mesosproto"
+	util "github.com/mesos/mesos-go/mesosutil"
 )
 
 type Command struct {
@@ -16,6 +17,10 @@ type Command struct {
 	Status        *mesos.TaskStatus
 	StdoutPailer  *Pailer
 	StderrPailer  *Pailer
+}
+
+func (c *Command) MatchesResources(cpu, mem float64) bool {
+	return c.CpuReq <= cpu && c.MemReq <= mem
 }
 
 func (c *Command) GetCommandInfo() *mesos.CommandInfo {
@@ -34,6 +39,13 @@ func (c *Command) GetCommandInfo() *mesos.CommandInfo {
 		Value:     &value,
 		Arguments: args,
 		Uris:      c.Uris,
+	}
+}
+
+func (c *Command) GetResources() []*mesos.Resource {
+	return []*mesos.Resource{
+		util.NewScalarResource("cpus", c.CpuReq),
+		util.NewScalarResource("mem", c.MemReq),
 	}
 }
 

@@ -42,6 +42,7 @@ var (
 	mesosAuthPrincipal  = flag.String("mesos-authentication-principal", "", "Mesos authentication principal.")
 	mesosAuthSecretFile = flag.String("mesos-authentication-secret-file", "", "Mesos authentication secret file.")
 	user                = flag.String("user", "", "Run task as specified user. Defaults to current user.")
+	role                = flag.String("role", "*", "Run tasks with resources for specific role.")
 	framworkName        = flag.String("framework-name", "NONE", "Framework name")
 	sendWorkdir         = flag.Bool("send-workdir", true, "Send current working dir to executor.")
 	cpuPerTask          = flag.Float64("cpu-per-task", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
@@ -115,8 +116,10 @@ func exportArtifacts(workdirPath *string) []*mesos.CommandInfo_URI {
 // create the framework data structure
 func prepareFrameworkInfo() *mesos.FrameworkInfo {
 	return &mesos.FrameworkInfo{
-		User: proto.String(*user),
-		Name: proto.String(*framworkName),
+		User:     proto.String(*user),
+		Name:     proto.String(*framworkName),
+		Hostname: proto.String(*hostname),
+		Role:     proto.String(*role),
 	}
 }
 
@@ -153,6 +156,13 @@ func prepareContainer() *mesos.ContainerInfo {
 		}
 	}
 	return nil
+}
+
+func prepareResourceFilter(cs Constraints) *ResourceFilter {
+	return &ResourceFilter{
+		Role:        role,
+		Constraints: cs,
+	}
 }
 
 // create the driver data structure
@@ -232,14 +242,16 @@ func main() {
 	}
 	uris = exportArtifacts(workdirPath)
 	containerInfo = prepareContainer()
-	fwinfo := prepareFrameworkInfo()
-	cred := prepateCredentials(fwinfo)
+
+	cmdq := NewCommandQueue()
 	cs, err := ParseConstraints(constraints)
 	if err != nil {
 		log.Errorf("Error parsing constraints: %s", err)
 	}
-	cmdq := NewCommandQueue()
-	scheduler := NewNoneScheduler(cmdq, cs)
+	scheduler := NewNoneScheduler(cmdq, prepareResourceFilter(cs))
+
+	fwinfo := prepareFrameworkInfo()
+	cred := prepateCredentials(fwinfo)
 	config := prepareDriver(scheduler, fwinfo, cred)
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
@@ -252,6 +264,7 @@ func main() {
 	// run the driver and wait for it to finish
 	if stat, err := driver.Run(); err != nil {
 		log.Infof("Framework stopped with status %s and error: %s\n", stat.String(), err.Error())
+		os.Exit(2)
 	}
 
 	if scheduler.HasFailures() {

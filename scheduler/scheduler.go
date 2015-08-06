@@ -13,7 +13,7 @@ import (
 type NoneScheduler struct {
 	queue         CommandQueuer
 	frameworkId   *mesos.FrameworkID
-	constraints   Constraints
+	filter        *ResourceFilter
 	tasksLaunched int
 	tasksFinished int
 	tasksFailed   int
@@ -21,11 +21,11 @@ type NoneScheduler struct {
 	running       bool
 }
 
-func NewNoneScheduler(cmdq CommandQueuer, constraints Constraints) *NoneScheduler {
+func NewNoneScheduler(cmdq CommandQueuer, filter *ResourceFilter) *NoneScheduler {
 	return &NoneScheduler{
 		queue:         cmdq,
 		frameworkId:   nil,
-		constraints:   constraints,
+		filter:        filter,
 		tasksLaunched: 0,
 		tasksFinished: 0,
 		tasksFailed:   0,
@@ -58,38 +58,20 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 
 	for _, offer := range offers {
 		// match constraints
-		if !sched.constraints.Match(offer) {
+		if !sched.filter.FilterOffer(offer) {
 			// skip offer if it does not match constraints
 			continue
 		}
 
-		// check resources
-		cpuResources := util.FilterResources(offer.Resources, func(res *mesos.Resource) bool {
-			return res.GetName() == "cpus"
-		})
-		cpus := 0.0
-		for _, res := range cpuResources {
-			cpus += res.GetScalar().GetValue()
-		}
+		remainingCpus := SumScalarResources(sched.filter.FilterResources(offer, "cpus"))
+		remainingMems := SumScalarResources(sched.filter.FilterResources(offer, "mem"))
 
-		memResources := util.FilterResources(offer.Resources, func(res *mesos.Resource) bool {
-			return res.GetName() == "mem"
-		})
-		mems := 0.0
-		for _, res := range memResources {
-			mems += res.GetScalar().GetValue()
-		}
-
-		log.Infoln("Received Offer <", offer.Id.GetValue(), "> with cpus=", cpus, " mem=", mems)
-
-		remainingCpus := cpus
-		remainingMems := mems
+		log.Infoln("Received Offer <", offer.Id.GetValue(), "> with cpus=", remainingCpus, " mem=", remainingMems)
 
 		// try to schedule as may tasks as possible for this single offer
 		var tasks []*mesos.TaskInfo
 		for sched.queue.GetCommand() != nil &&
-			sched.queue.GetCommand().CpuReq <= remainingCpus &&
-			sched.queue.GetCommand().MemReq <= remainingMems {
+			sched.queue.GetCommand().MatchesResources(remainingCpus, remainingMems) {
 
 			c := sched.queue.GetCommand()
 			task := sched.prepareTaskInfo(offer, c)
@@ -184,10 +166,8 @@ func (sched *NoneScheduler) prepareTaskInfo(offer *mesos.Offer, c *Command) *mes
 		TaskId:  util.NewTaskID(c.Id),
 		SlaveId: offer.SlaveId,
 		Command: c.GetCommandInfo(),
-		Resources: []*mesos.Resource{
-			util.NewScalarResource("cpus", c.CpuReq),
-			util.NewScalarResource("mem", c.MemReq),
-		},
+		// TODO: add role to resource allocation?
+		Resources: c.GetResources(),
 		Container: c.ContainerInfo,
 	}
 	log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
