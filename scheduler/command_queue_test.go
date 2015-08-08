@@ -15,10 +15,6 @@ func TestEnqueueAddsId(t *testing.T) {
 	assert.NotEmpty(t, c.Id, "command should have got an id")
 	assert.NotNil(t, cq.GetCommandById(c.Id))
 	assert.Equal(t, c.Id, cq.GetCommandById(c.Id).Id)
-
-	cmds := cq.GetCommands()
-	assert.NotNil(t, cmds[c.Id])
-	assert.Equal(t, c.Id, cmds[c.Id].Id)
 }
 
 func TestNext(t *testing.T) {

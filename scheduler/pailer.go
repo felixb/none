@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -17,12 +19,16 @@ const (
 	PAILER_STOP_DELAY = 3 * time.Second
 )
 
+type StringWriter interface {
+	WriteString(string) (int, error)
+}
+
 type Pailer struct {
 	BaseUrl  string
 	BasePath string
 	Path     string
 	Offset   int
-	C        chan string
+	writer   StringWriter
 	running  bool
 	ticker   *time.Ticker
 	wait     chan bool
@@ -33,24 +39,29 @@ type update struct {
 	Data   string
 }
 
-func NewPailer(master *string, slaveId *mesos.SlaveID, frameworkId *mesos.FrameworkID, taskId *mesos.TaskID, path string) (*Pailer, error) {
+// get a pailer pointing to task's file
+func NewPailer(w StringWriter, master *string, frameworkId *mesos.FrameworkID, command *Command, path string) (*Pailer, error) {
+	if w == nil {
+		return nil, errors.New("w must not be nil")
+	}
+
 	ms, err := FetchMasterState(master)
 	if err != nil {
 		return nil, err
 	}
 
-	slv := ms.GetSlave(slaveId.GetValue())
+	slv := ms.GetSlave(command.SlaveId)
 	if slv == nil {
-		return nil, fmt.Errorf("Unable to find slave with id %s", slaveId.GetValue())
+		return nil, fmt.Errorf("Unable to find slave with id %s", command.SlaveId)
 	}
 	ss, err := slv.GetState()
 	if err != nil {
 		return nil, err
 	}
 
-	d := ss.GetDirectory(frameworkId.GetValue(), taskId.GetValue())
+	d := ss.GetDirectory(frameworkId.GetValue(), command.Id)
 	if d == nil {
-		return nil, fmt.Errorf("Unable to find directory for framework %s with task %s", frameworkId.GetValue(), taskId.GetValue())
+		return nil, fmt.Errorf("Unable to find directory for framework %s with task %s", frameworkId.GetValue(), command.Id)
 	}
 
 	return &Pailer{
@@ -58,45 +69,13 @@ func NewPailer(master *string, slaveId *mesos.SlaveID, frameworkId *mesos.Framew
 		BasePath: *d,
 		Path:     path,
 		Offset:   0,
-		C:        make(chan string),
+		writer:   w,
 		running:  false,
-		wait:     make(chan bool),
+		wait:     make(chan bool, 1),
 	}, nil
 }
 
-func (p *Pailer) fetch() error {
-	url := fmt.Sprintf("%s?length=%d&offset=%d&path=%s",
-		p.BaseUrl,
-		PAILER_CHUNK_SIZE,
-		p.Offset,
-		url.QueryEscape(fmt.Sprintf("%s/%s", p.BasePath, p.Path)))
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	d := json.NewDecoder(resp.Body)
-	var u update
-	if err := d.Decode(&u); err != nil {
-		return err
-	}
-
-	p.Offset = u.Offset + len(u.Data)
-	p.C <- u.Data
-	return nil
-}
-
-func (p *Pailer) tick() {
-	for p.running {
-		if err := p.fetch(); err != nil {
-			log.Errorf("Fetching pailer update failed: %s", err)
-		}
-		<-p.ticker.C
-	}
-	close(p.C)
-	p.wait <- true
-}
-
+// start the pailer
 func (p *Pailer) Start() {
 	log.Infof("Start pailing: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
 	p.running = true
@@ -104,17 +83,66 @@ func (p *Pailer) Start() {
 	go p.tick()
 }
 
+// stop the pailer
 func (p *Pailer) Stop() {
-	go p.stop()
+	log.Infof("Stopping pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
+	p.running = false
 }
 
+// wait for pailer to finish last fetch
 func (p *Pailer) Wait() {
 	log.Infof("Waiting for pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
 	<-p.wait
+	p.wait <- true
 }
 
-func (p *Pailer) stop() {
-	time.Sleep(PAILER_STOP_DELAY)
-	log.Infof("Stopping pailer: %s %s/%s", p.BaseUrl, p.BasePath, p.Path)
-	p.running = false
+// fetch update via http
+func (p *Pailer) fetch() (*update, error) {
+	url := fmt.Sprintf("%s?length=%d&offset=%d&path=%s",
+		p.BaseUrl,
+		PAILER_CHUNK_SIZE,
+		p.Offset,
+		url.QueryEscape(fmt.Sprintf("%s/%s", p.BasePath, p.Path)))
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return p.decode(resp.Body)
+}
+
+// decode data to struct
+func (p *Pailer) decode(r io.Reader) (*update, error) {
+	d := json.NewDecoder(r)
+	var u update
+	if err := d.Decode(&u); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// apply fetched update
+func (p *Pailer) update(u *update) {
+	p.Offset = u.Offset + len(u.Data)
+	p.writer.WriteString(u.Data)
+}
+
+// fetch update and apply
+func (p *Pailer) fetchAndUpdate() {
+	u, err := p.fetch()
+	if err != nil {
+		log.Errorf("Fetching pailer update failed: %s", err)
+	} else {
+		p.update(u)
+	}
+}
+
+// fetch updates every Xs
+func (p *Pailer) tick() {
+	for p.running {
+		p.fetchAndUpdate()
+		<-p.ticker.C
+	}
+	p.fetchAndUpdate()
+	p.wait <- true
 }

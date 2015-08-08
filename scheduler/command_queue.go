@@ -11,7 +11,6 @@ const (
 type CommandQueuer interface {
 	Next() *Command
 	GetCommand() *Command
-	GetCommands() map[string]*Command
 	GetCommandById(string) *Command
 	Closed() bool
 }
@@ -56,11 +55,6 @@ func (cq *CommandQueue) GetCommand() *Command {
 		return cq.Next()
 	}
 	return cq.next
-}
-
-// return a map from task ids to commands
-func (cq *CommandQueue) GetCommands() map[string]*Command {
-	return cq.commands
 }
 
 // fetch a command by id

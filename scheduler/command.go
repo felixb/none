@@ -9,6 +9,7 @@ import (
 
 type Command struct {
 	Id            string
+	SlaveId       string
 	Cmd           string
 	CpuReq        float64
 	MemReq        float64

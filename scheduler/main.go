@@ -248,7 +248,8 @@ func main() {
 	if err != nil {
 		log.Errorf("Error parsing constraints: %s", err)
 	}
-	scheduler := NewNoneScheduler(cmdq, prepareResourceFilter(cs))
+	handler := NewCommandHandler()
+	scheduler := NewNoneScheduler(cmdq, handler, prepareResourceFilter(cs))
 
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
@@ -267,7 +268,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	if scheduler.HasFailures() {
+	if handler.HasFailures() {
 		os.Exit(1)
 	}
 }
