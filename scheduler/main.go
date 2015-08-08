@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -52,9 +51,6 @@ var (
 	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
 	constraints         = flag.String("constraints", "", "Constraints for selecting mesos slaves, format: 'attribute:operant[:value][;..]'")
 	version             = flag.Bool("version", false, "Show NONE version.")
-
-	containerInfo *mesos.ContainerInfo
-	uris          []*mesos.CommandInfo_URI
 )
 
 // parse command line flags
@@ -196,38 +192,6 @@ func parseIP(address string) net.IP {
 	return addr[0]
 }
 
-func startCommand(cmdq *CommandQueue, cmd *string) {
-	cmdq.Enqueue(&Command{
-		Cmd:           *cmd,
-		CpuReq:        *cpuPerTask,
-		MemReq:        *memPerTask,
-		ContainerInfo: containerInfo,
-		Uris:          uris,
-	})
-}
-
-func startCommands(cmdq *CommandQueue) {
-	reader := bufio.NewReader(os.Stdin)
-	cmd, err := reader.ReadString('\n')
-	for err == nil {
-		startCommand(cmdq, &cmd)
-		cmd, err = reader.ReadString('\n')
-	}
-	cmdq.Close()
-}
-
-func queueCommands(cmdq *CommandQueue) {
-	if command != nil && *command != "" {
-		// queue single command for execution
-		startCommand(cmdq, command)
-		cmdq.Close()
-	} else {
-		// queue commands from stdin for execution
-		// non-blocking
-		go startCommands(cmdq)
-	}
-}
-
 // ----------------------- func main() ------------------------- //
 
 func main() {
@@ -240,8 +204,8 @@ func main() {
 	if workdirPath != nil {
 		defer os.Remove(*workdirPath)
 	}
-	uris = exportArtifacts(workdirPath)
-	containerInfo = prepareContainer()
+	uris := exportArtifacts(workdirPath)
+	containerInfo := prepareContainer()
 
 	cmdq := NewCommandQueue()
 	cs, err := ParseConstraints(constraints)
@@ -260,7 +224,16 @@ func main() {
 		log.Errorln("Unable to create a SchedulerDriver ", err.Error())
 	}
 
-	queueCommands(cmdq)
+	cli := NewCli(cmdq, containerInfo, uris, cpuPerTask, memPerTask)
+	if command != nil && *command != "" {
+		// queue single command for execution
+		cli.StartCommand(command)
+		cli.Close()
+	} else {
+		// queue commands from stdin for execution
+		// non-blocking
+		go cli.Start()
+	}
 
 	// run the driver and wait for it to finish
 	if stat, err := driver.Run(); err != nil {
