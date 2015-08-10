@@ -47,7 +47,7 @@ Example for running three commands in parallel:
  * `-address="your-hostname"`: Binding address for framework and artifact server
  * `-artifactPort=10080`: Binding port for artifact server
  * `-hostname=""`: Overwrite hostname
- * `-master="127.0.0.1:5050"`: Master address <ip:port>
+ * `-master=""`: Master address `ip:port` or `zk://zk-url`
  * `-port=10050`: Binding port for framework
 
 #### Framework
@@ -60,7 +60,7 @@ Example for running three commands in parallel:
 #### Tasks
 
  * `-command=""`: Command to run on the cluster
- * `-constraints=""`: Constraints for selecting mesos slaves, format: `attribute:operant[:value][;..]`
+ * `-constraints=""`: Constraints for selecting mesos slaves `attribute:operant[:value][;..]`
  * `-container=""`: Container definition as JSON, overrules dockerImage
  * `-cpu-per-task=1`: CPU reservation for task execution
  * `-docker-image=""`: Docker image for running the commands in

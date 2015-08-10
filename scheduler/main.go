@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
@@ -36,7 +38,7 @@ var (
 	address            = flag.String("address", defaultHostname, "Binding address for framework and artifact server")
 	port               = flag.Uint("port", DEFAULT_DRIVER_PORT, "Binding port for framework")
 	artifactPort       = flag.Int("artifactPort", DEFAULT_ARTIFACT_PORT, "Binding port for artifact server")
-	master             = flag.String("master", "127.0.0.1:5050", "Master address <ip:port>")
+	master             = flag.String("master", "", "Master address <ip:port> or <zk://zk-url>")
 	authProvider       = flag.String("mesos-authentication-provider", sasl.ProviderName,
 		fmt.Sprintf("Authentication provider to use, default is SASL that supports mechanisms: %+v", mech.ListSupported()))
 	mesosAuthPrincipal  = flag.String("mesos-authentication-principal", "", "Mesos authentication principal.")
@@ -50,7 +52,7 @@ var (
 	command             = flag.String("command", "", "Command to run on the cluster")
 	containerJson       = flag.String("container", "", "Container definition as JSON, overrules dockerImage")
 	dockerImage         = flag.String("docker-image", "", "Docker image for running the commands in")
-	constraints         = flag.String("constraints", "", "Constraints for selecting mesos slaves, format: 'attribute:operant[:value][;..]'")
+	constraints         = flag.String("constraints", "", "Constraints for selecting mesos slaves <attribute:operant[:value][;..]>")
 	version             = flag.Bool("version", false, "Show NONE version.")
 
 	containerInfo *mesos.ContainerInfo
@@ -166,7 +168,17 @@ func prepareResourceFilter(cs Constraints) *ResourceFilter {
 }
 
 // create the driver data structure
-func prepareDriver(scheduler sched.Scheduler, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) sched.DriverConfig {
+func prepareDriver(scheduler sched.Scheduler, ld LeaderDetector, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) (sched.DriverConfig, error) {
+	if len(*master) == 0 {
+		return sched.DriverConfig{}, errors.New("--master is a mandatory flag.")
+	}
+	if strings.HasPrefix(*master, "zk://") {
+		m, err := ld.Detect(master)
+		if err != nil {
+			return sched.DriverConfig{}, err
+		}
+		master = m
+	}
 	bindingAddress := parseIP(*address)
 	return sched.DriverConfig{
 		Scheduler:        scheduler,
@@ -181,7 +193,7 @@ func prepareDriver(scheduler sched.Scheduler, fwinfo *mesos.FrameworkInfo, cred 
 			ctx = sasl.WithBindingAddress(ctx, bindingAddress)
 			return ctx
 		},
-	}
+	}, nil
 }
 
 // resolve hostname to ip
@@ -246,18 +258,24 @@ func main() {
 	cmdq := NewCommandQueue()
 	cs, err := ParseConstraints(constraints)
 	if err != nil {
-		log.Errorf("Error parsing constraints: %s", err)
+		log.Errorln("Error parsing constraints", err)
+		os.Exit(10)
 	}
 	handler := NewCommandHandler()
 	scheduler := NewNoneScheduler(cmdq, handler, prepareResourceFilter(cs))
 
 	fwinfo := prepareFrameworkInfo()
 	cred := prepateCredentials(fwinfo)
-	config := prepareDriver(scheduler, fwinfo, cred)
+	config, err := prepareDriver(scheduler, NewZkLeaderDetector(), fwinfo, cred)
+	if err != nil {
+		log.Errorln("Unable to create a mesos driver:", err.Error())
+		os.Exit(10)
+	}
 
 	driver, err := sched.NewMesosSchedulerDriver(config)
 	if err != nil {
-		log.Errorln("Unable to create a SchedulerDriver ", err.Error())
+		log.Errorln("Unable to create a SchedulerDriver:", err.Error())
+		os.Exit(10)
 	}
 
 	queueCommands(cmdq)

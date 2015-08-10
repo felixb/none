@@ -17,6 +17,7 @@ func TestFilterOfferMatch(t *testing.T) {
 	assert.True(t, rf.FilterOffer(o))
 	c.AssertExpectations(t)
 }
+
 func TestFilterOfferNoMatch(t *testing.T) {
 	o := &mesos.Offer{}
 	c := new(MockConstraint)
