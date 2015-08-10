@@ -17,7 +17,7 @@ const (
 type Constraints []Constraint
 
 func ParseConstraints(params *string) (Constraints, error) {
-	if params == nil {
+	if params == nil || len(*params) == 0 {
 		return Constraints{}, nil
 	}
 	constraints := strings.Split(*params, ";")
