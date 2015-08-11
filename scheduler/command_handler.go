@@ -1,15 +1,7 @@
 package main
 
-import (
-	"os"
-
-	log "github.com/golang/glog"
-	mesos "github.com/mesos/mesos-go/mesosproto"
-)
-
 type CommandHandler struct {
 	commands      []*Command
-	frameworkId   *mesos.FrameworkID
 	tasksLaunched int
 	tasksEnded    int
 	tasksFailed   int
@@ -19,16 +11,11 @@ type CommandHandler struct {
 func NewCommandHandler() *CommandHandler {
 	return &CommandHandler{
 		commands:      []*Command{},
-		frameworkId:   nil,
 		tasksLaunched: 0,
 		tasksEnded:    0,
 		tasksFailed:   0,
 		totalTasks:    0,
 	}
-}
-
-func (ch *CommandHandler) SetFrameworkId(id *mesos.FrameworkID) {
-	ch.frameworkId = id
 }
 
 func (ch *CommandHandler) CommandLaunched(c *Command) {
@@ -37,8 +24,7 @@ func (ch *CommandHandler) CommandLaunched(c *Command) {
 }
 
 func (ch *CommandHandler) CommandRunning(c *Command) {
-	c.StdoutPailer = ch.createAndStartPailer(c, "cmd.stdout", os.Stdout)
-	c.StderrPailer = ch.createAndStartPailer(c, "cmd.stderr", os.Stderr)
+	c.StartPailers()
 }
 
 func (ch *CommandHandler) CommandEnded(c *Command) {
@@ -66,17 +52,4 @@ func (ch *CommandHandler) HasFailures() bool {
 
 func (ch *CommandHandler) HasRunningTasks() bool {
 	return ch.tasksLaunched > ch.tasksEnded
-}
-
-// private
-
-func (ch *CommandHandler) createAndStartPailer(c *Command, file string, w StringWriter) *Pailer {
-	p, err := NewPailer(w, master, ch.frameworkId, c, file)
-	if err != nil {
-		log.Errorf("Unable to start pailer for task %s: %s\n", c.Id, err)
-		return nil
-	} else {
-		p.Start()
-		return p
-	}
 }

@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
+	"os"
 
+	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 )
 
 type Command struct {
 	Id            string
+	FrameworkId   string
 	SlaveId       string
 	Cmd           string
 	CpuReq        float64
@@ -50,6 +53,11 @@ func (c *Command) GetResources() []*mesos.Resource {
 	}
 }
 
+func (c *Command) StartPailers() {
+	c.StdoutPailer = c.createAndStartPailer("cmd.stdout", os.Stdout)
+	c.StderrPailer = c.createAndStartPailer("cmd.stderr", os.Stderr)
+}
+
 func (c *Command) StopPailers() {
 	if c.StdoutPailer != nil {
 		c.StdoutPailer.Stop()
@@ -68,5 +76,18 @@ func (c *Command) WaitForPailers() {
 	if c.StderrPailer != nil {
 		c.StderrPailer.Wait()
 		c.StderrPailer = nil
+	}
+}
+
+// private
+
+func (c *Command) createAndStartPailer(file string, w StringWriter) *Pailer {
+	p, err := NewPailer(w, master, c, file)
+	if err != nil {
+		log.Errorf("Unable to start pailer for task %s: %s\n", c.Id, err)
+		return nil
+	} else {
+		p.Start()
+		return p
 	}
 }

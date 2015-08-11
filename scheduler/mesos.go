@@ -145,3 +145,28 @@ type Executor struct {
 type Task struct {
 	Id *string
 }
+
+// utils
+
+func FetchSlaveDirInfo(master *string, command *Command) (string, string, error) {
+	ms, err := FetchMasterState(master)
+	if err != nil {
+		return "", "", err
+	}
+
+	slv := ms.GetSlave(command.SlaveId)
+	if slv == nil {
+		return "", "", fmt.Errorf("Unable to find slave with id %s", command.SlaveId)
+	}
+	ss, err := slv.GetState()
+	if err != nil {
+		return "", "", err
+	}
+
+	d := ss.GetDirectory(command.FrameworkId, command.Id)
+	if d == nil {
+		return "", "", fmt.Errorf("Unable to find directory for framework %s with task %s", command.FrameworkId, command.Id)
+	}
+
+	return slv.GetUrl(), *d, nil
+}

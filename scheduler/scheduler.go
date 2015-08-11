@@ -12,6 +12,7 @@ type NoneScheduler struct {
 	queue         CommandQueuer
 	handler       *CommandHandler
 	filter        *ResourceFilter
+	frameworkId   string
 	tasksLaunched int
 	tasksFinished int
 	tasksFailed   int
@@ -28,7 +29,7 @@ func NewNoneScheduler(cmdq CommandQueuer, handler *CommandHandler, filter *Resou
 
 func (sched *NoneScheduler) Registered(driver sched.SchedulerDriver, frameworkId *mesos.FrameworkID, masterInfo *mesos.MasterInfo) {
 	log.Infoln("Framework Registered with Master", masterInfo)
-	sched.handler.SetFrameworkId(frameworkId)
+	sched.frameworkId = frameworkId.GetValue()
 }
 
 func (sched *NoneScheduler) Reregistered(driver sched.SchedulerDriver, masterInfo *mesos.MasterInfo) {}
@@ -63,6 +64,7 @@ func (sched *NoneScheduler) ResourceOffers(driver sched.SchedulerDriver, offers 
 
 			c := sched.queue.GetCommand()
 			c.SlaveId = offer.SlaveId.GetValue()
+			c.FrameworkId = sched.frameworkId
 			sched.handler.CommandLaunched(c)
 			task := sched.prepareTaskInfo(offer, c)
 			tasks = append(tasks, task)

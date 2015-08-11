@@ -9,7 +9,6 @@ import (
 	"time"
 
 	log "github.com/golang/glog"
-	mesos "github.com/mesos/mesos-go/mesosproto"
 )
 
 const (
@@ -39,33 +38,19 @@ type update struct {
 }
 
 // get a pailer pointing to task's file
-func NewPailer(w StringWriter, master *string, frameworkId *mesos.FrameworkID, command *Command, path string) (*Pailer, error) {
+func NewPailer(w StringWriter, master *string, command *Command, path string) (*Pailer, error) {
 	if w == nil {
 		return nil, fmt.Errorf("w must not be nil")
 	}
 
-	ms, err := FetchMasterState(master)
+	su, d, err := FetchSlaveDirInfo(master, command)
 	if err != nil {
 		return nil, err
-	}
-
-	slv := ms.GetSlave(command.SlaveId)
-	if slv == nil {
-		return nil, fmt.Errorf("Unable to find slave with id %s", command.SlaveId)
-	}
-	ss, err := slv.GetState()
-	if err != nil {
-		return nil, err
-	}
-
-	d := ss.GetDirectory(frameworkId.GetValue(), command.Id)
-	if d == nil {
-		return nil, fmt.Errorf("Unable to find directory for framework %s with task %s", frameworkId.GetValue(), command.Id)
 	}
 
 	return &Pailer{
-		BaseUrl:  fmt.Sprintf("%s/files/read.json", slv.GetUrl()),
-		BasePath: *d,
+		BaseUrl:  fmt.Sprintf("%s/files/read.json", su),
+		BasePath: d,
 		Path:     path,
 		Offset:   0,
 		writer:   w,
