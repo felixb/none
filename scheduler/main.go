@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -170,7 +169,7 @@ func prepareResourceFilter(cs Constraints) *ResourceFilter {
 // create the driver data structure
 func prepareDriver(scheduler sched.Scheduler, ld LeaderDetector, fwinfo *mesos.FrameworkInfo, cred *mesos.Credential) (sched.DriverConfig, error) {
 	if len(*master) == 0 {
-		return sched.DriverConfig{}, errors.New("--master is a mandatory flag.")
+		return sched.DriverConfig{}, fmt.Errorf("--master is a mandatory flag.")
 	}
 	if strings.HasPrefix(*master, "zk://") {
 		m, err := ld.Detect(master)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +41,7 @@ type update struct {
 // get a pailer pointing to task's file
 func NewPailer(w StringWriter, master *string, frameworkId *mesos.FrameworkID, command *Command, path string) (*Pailer, error) {
 	if w == nil {
-		return nil, errors.New("w must not be nil")
+		return nil, fmt.Errorf("w must not be nil")
 	}
 
 	ms, err := FetchMasterState(master)

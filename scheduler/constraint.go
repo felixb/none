@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -49,11 +48,11 @@ type Constraint interface {
 
 func ParseConstraint(params *string) (Constraint, error) {
 	if params == nil {
-		return nil, errors.New("Params must not be nil")
+		return nil, fmt.Errorf("Params must not be nil")
 	}
 	parts := strings.SplitN(*params, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.New(fmt.Sprintf("Invalid Constraint definition: %s", *params))
+		return nil, fmt.Errorf("Invalid Constraint definition: %s", *params)
 	}
 	if len(parts) == 2 {
 		return NewConstraint(parts[0], parts[1], "")
@@ -66,7 +65,7 @@ func NewConstraint(attr, operator, value string) (Constraint, error) {
 	if operator == CONSTRAINT_OPERATOR_EQUALS {
 		return NewEqualsConstraint(attr, value), nil
 	}
-	return nil, errors.New(fmt.Sprintf("Unsupported operator: %s", operator))
+	return nil, fmt.Errorf("Unsupported operator: %s", operator)
 }
 
 // EqualsConstraint
