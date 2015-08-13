@@ -7,12 +7,12 @@ import (
 )
 
 func TestNewCommandHandler(t *testing.T) {
-	ch := NewCommandHandler()
+	ch := NewCommandHandler(nil)
 	assert.NotNil(t, ch)
 }
 
 func TestHasFailures(t *testing.T) {
-	ch := NewCommandHandler()
+	ch := NewCommandHandler(nil)
 	assert.False(t, ch.HasFailures())
 
 	c := &Command{}
@@ -33,7 +33,7 @@ func TestHasFailures(t *testing.T) {
 }
 
 func TestHasRunningTasks(t *testing.T) {
-	ch := NewCommandHandler()
+	ch := NewCommandHandler(nil)
 	assert.False(t, ch.HasRunningTasks())
 
 	c := &Command{}

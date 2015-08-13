@@ -64,6 +64,7 @@ Example for running three commands in parallel:
  * `-container=""`: Container definition as JSON, overrules dockerImage
  * `-cpu-per-task=1`: CPU reservation for task execution
  * `-docker-image=""`: Docker image for running the commands in
+ * `-download-file=""`: Path to a file which is downloaded after execution of each task. Relative to mesos sandbox.
  * `-mem-per-task=128`: Memory resveration for task execution
  * `-role=""`: Run tasks with resources for specific role.
  * `-user=""`: Run task as specified user. Defaults to current user.

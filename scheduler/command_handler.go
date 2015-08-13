@@ -1,6 +1,11 @@
 package main
 
+import (
+	log "github.com/golang/glog"
+)
+
 type CommandHandler struct {
+	downloadFiles *string
 	commands      []*Command
 	tasksLaunched int
 	tasksEnded    int
@@ -8,8 +13,9 @@ type CommandHandler struct {
 	totalTasks    int
 }
 
-func NewCommandHandler() *CommandHandler {
+func NewCommandHandler(downloadFiles *string) *CommandHandler {
 	return &CommandHandler{
+		downloadFiles: downloadFiles,
 		commands:      []*Command{},
 		tasksLaunched: 0,
 		tasksEnded:    0,
@@ -30,6 +36,14 @@ func (ch *CommandHandler) CommandRunning(c *Command) {
 func (ch *CommandHandler) CommandEnded(c *Command) {
 	ch.tasksEnded++
 	c.StopPailers()
+	if ch.downloadFiles != nil && *ch.downloadFiles != "" {
+		// TODO do thins async?
+		err := c.DownloadFile(ch.downloadFiles)
+		if err != nil {
+			log.Errorln("Failed loading file '", *ch.downloadFiles, "'", err)
+			// TODO do something?
+		}
+	}
 }
 
 func (ch *CommandHandler) CommandFinished(c *Command) {

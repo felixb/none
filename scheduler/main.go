@@ -46,6 +46,7 @@ var (
 	role                = flag.String("role", "*", "Run tasks with resources for specific role.")
 	framworkName        = flag.String("framework-name", "NONE", "Framework name")
 	sendWorkdir         = flag.Bool("send-workdir", true, "Send current working dir to executor.")
+	downloadFiles       = flag.String("download-file", "", "Path to a file which is downloaded after execution of each task. Relative to mesos sandbox.")
 	cpuPerTask          = flag.Float64("cpu-per-task", DEFAULT_CPUS_PER_TASK, "CPU reservation for task execution")
 	memPerTask          = flag.Float64("mem-per-task", DEFAULT_MEM_PER_TASK, "Memory resveration for task execution")
 	command             = flag.String("command", "", "Command to run on the cluster")
@@ -260,7 +261,7 @@ func main() {
 		log.Errorln("Error parsing constraints", err)
 		os.Exit(10)
 	}
-	handler := NewCommandHandler()
+	handler := NewCommandHandler(downloadFiles)
 	scheduler := NewNoneScheduler(cmdq, handler, prepareResourceFilter(cs))
 
 	fwinfo := prepareFrameworkInfo()

@@ -79,6 +79,20 @@ func (c *Command) WaitForPailers() {
 	}
 }
 
+func (c *Command) DownloadFile(path *string) error {
+	f, err := os.Create(*path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	d, err := NewDownloader(f, master, c, *path)
+	if err != nil {
+		return err
+	}
+	_, err = d.Download()
+	return err
+}
+
 // private
 
 func (c *Command) createAndStartPailer(file string, w StringWriter) *Pailer {
